@@ -5,6 +5,19 @@ from pathlib import Path
 from typing import Any
 
 
+def _load_toml(path: Path) -> dict[str, Any]:
+    try:
+        import tomllib  # py3.11+
+
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except ModuleNotFoundError:
+        try:
+            import tomli
+        except Exception as e:  # pragma: no cover
+            raise SystemExit("TOML config requires tomli on Python 3.10. Install with: pip install tomli") from e
+        return tomli.loads(path.read_text(encoding="utf-8"))
+
+
 def _load_yaml(path: Path) -> dict[str, Any]:
     try:
         import yaml  # type: ignore
@@ -29,11 +42,7 @@ def load_config(path_str: str | None) -> dict[str, Any]:
     if ext in {".json"}:
         data = json.loads(path.read_text(encoding="utf-8"))
     elif ext in {".toml"}:
-        try:
-            import tomllib  # py3.11+
-        except Exception as e:  # pragma: no cover
-            raise SystemExit("TOML config requires Python 3.11+") from e
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        data = _load_toml(path)
     elif ext in {".yaml", ".yml"}:
         data = _load_yaml(path)
     else:
