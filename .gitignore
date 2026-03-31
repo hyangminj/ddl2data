@@ -6,3 +6,7 @@ __pycache__/
 *.sqlite3
 .DS_Store
 output_csv/
+.sisyphus/
+AGENTS.md
+CLAUDE.md
+CODEX_TASKS.md

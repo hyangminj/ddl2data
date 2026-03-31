@@ -45,9 +45,15 @@ It parses table definitions and foreign-key relationships, generates rows with s
 
 ```bash
 cd datagen
-python -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
 pip install -e .
+```
+
+Optional Polars support for `--out parquet` or `--engine polars`:
+
+```bash
+pip install -e ".[polars]"
 ```
 
 After install, both are available:
@@ -83,7 +89,7 @@ datagen --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
 ### 3-1) Generate Parquet from DDL (one file per table)
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out parquet --output-path ./parquet_out
+datagen --ddl schema.sql --rows 100 --out parquet --parquet-compression zstd --output-path ./parquet_out
 ```
 
 ### 4) Read schema directly from DB and print SQL
@@ -136,13 +142,14 @@ dist = [
 ### 8) Write generation report (with validation summary)
 
 ```bash
-datagen --ddl schema.sql --rows 500 --report-path report.json --out json --output-path data.json
+datagen --ddl schema.sql --rows 500 --strict-checks --report-path report.json --out json --output-path data.json
 ```
 
 Report JSON now includes validation counts and sample issues for:
 - FK integrity violations
 - non-null violations
 - unique collisions
+- supported CHECK violations when `--strict-checks` is enabled
 
 ### 9) Use Polars generation+output engine (optional)
 
@@ -151,9 +158,13 @@ datagen --ddl schema.sql --rows 100000 --out csv --engine polars --output-path .
 ```
 
 `--engine polars` now applies to generation + render/write stages where practical.
-Fallback behavior is explicit: tables with FK/check/unique constraints automatically fall back to the Python row-wise generator to preserve correctness.
+Fallback behavior is explicit:
+- tables with CHECK constraints fall back to the Python row-wise generator
+- tables with unique or primary-key constraints fall back to the Python row-wise generator
+- FK-only tables can stay on the Polars generation path
 
 If `polars` is not installed and `--engine polars` is selected in writers, a clear dependency error is raised.
+`--out parquet` also requires the optional `polars` dependency regardless of `--engine`.
 
 ### 10) Per-table row counts (with global fallback)
 
@@ -249,6 +260,8 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
         [--dist ...] [--dist ...]
         [--seed INT]
         [--report-path report.json]
+        [--strict-checks]
+        [--parquet-compression snappy|zstd|lz4|gzip|none]
 ```
 
 - `--config`: load defaults from JSON/TOML/YAML config file
@@ -260,12 +273,14 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
 - `--out`: output format (default: `postgres`), includes `bigquery` and `parquet` (`parquet` requires `polars`)
 - `--engine`: `python` (default) or `polars` for generation + render/write where practical (auto-fallback to python for constraint-heavy tables)
 - `--bq-insert-all`: for `--out bigquery`, render `INSERT ALL ... SELECT 1;` blocks
-- `--output-path`: output file path (`json`/`sql`) or directory (`csv`)
+- `--output-path`: output file path (`json`/`sql`) or directory (`csv`/`parquet`)
 - `--db-url`: DB connection URL
 - `--insert`: insert generated rows into `--db-url`
 - `--dist`: distribution override(s)
 - `--seed`: deterministic run seed
 - `--report-path`: write a JSON profile report (rows/null-ratio/top-values) plus validation summary
+- `--strict-checks`: validate generated rows against supported CHECK constraints and add violation counts to the report
+- `--parquet-compression`: parquet codec for `--out parquet` (`snappy`, `zstd`, `lz4`, `gzip`, `none`)
 
 ---
 
@@ -292,49 +307,7 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 
 ## Current limitations
 
-- `--rows` is per table (not per-table custom counts yet)
-- DDL support is strong for common patterns, but not every advanced SQL dialect feature
-- Constraint-aware generation is lightweight: basic unique/check handling is supported, but complex SQL expressions are not fully modeled
-
----
-
-## Roadmap status (as of latest update)
-
-### ✅ Implemented
-
-- Rich CHECK-aware heuristics (practical subset):
-  - comparisons (`>=`, `>`, `<=`, `<`, `=`, `!=`)
-  - `BETWEEN`
-  - `IN (...)`
-  - regex-like forms (`~`, `REGEXP_LIKE`) for common patterns
-- Per-table row count control:
-  - CLI: `--table-rows users=20,orders=500`
-  - Config: `table_rows = { users = 20, orders = 500 }`
-  - Global fallback via `--rows`
-- Advanced SQL output options:
-  - `--out bigquery` with dataset/project-qualified table path quoting
-  - BigQuery `--bq-insert-all` mode
-  - `--out parquet` (per-table parquet files)
-- Polars engine support:
-  - `--engine polars` for generation + render/write path where practical
-  - explicit fallback to python generator for constraint-heavy tables
-- Validation/reporting:
-  - FK / non-null / unique collision checks
-  - report summary + sample issues via `--report-path`
-
-### ⏳ Remaining / future improvement
-
-- Even richer CHECK parser coverage for complex SQL expressions and nested predicates
-- Reduce python fallback surface in `--engine polars` for constraint-heavy schemas
-- Dialect-specific SQL polishing for edge cases (escaping/typing nuances by engine)
-- Optional per-table advanced generation profiles (beyond row count overrides)
-
-## Hand-off TODO (for next dev session)
-
-1. Expand CHECK parser to support nested `AND/OR` and function-heavy constraints.
-2. Add strict mode for CHECK enforcement with violation counters.
-3. Improve BigQuery writer for typed literals and STRUCT/ARRAY-safe escaping.
-4. Add parquet compression/codec options (snappy/zstd) via CLI.
-5. Improve polars generator to support selected FK cases without full python fallback.
-6. Add end-to-end fixtures for mixed constraints + per-table row overrides.
-7. Add changelog/release note for `v0.3.0` snapshot.
+- DDL parsing and DB introspection cover common schemas well, but advanced dialect-specific features are still partial.
+- CHECK-aware generation and `--strict-checks` cover a practical subset: numeric comparisons, `BETWEEN`, `IN (...)`, regex-like forms, and nested `AND`/`OR`.
+- Function-heavy or cross-column CHECK expressions are handled best-effort rather than fully modeled.
+- `--engine polars` still falls back to Python for tables with CHECK, unique, or primary-key constraints.

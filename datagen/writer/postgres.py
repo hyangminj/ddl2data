@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -11,6 +12,22 @@ def _sql_literal(v: Any) -> str:
     if isinstance(v, (int, float)):
         return str(v)
     s = str(v).replace("\\", "\\\\").replace("'", "''")
+    return f"'{s}'"
+
+
+def _bq_sql_literal(v: Any) -> str:
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, (int, float)):
+        return str(v)
+    s = str(v)
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return f"DATE '{s}'"
+    if re.match(r"^\d{4}-\d{2}-\d{2}T", s):
+        return f"TIMESTAMP '{s}'"
+    s = s.replace("\\", "\\\\").replace("'", "''").replace("\n", "\\n")
     return f"'{s}'"
 
 
@@ -33,18 +50,19 @@ def _render_insert_sql_python(
     cols = list(rows[0].keys())
     col_sql = ", ".join(_quote_ident(c, dialect) for c in cols)
     table_sql = _quote_ident(table, dialect)
+    literal_fn = _bq_sql_literal if dialect == "bigquery" else _sql_literal
 
     if dialect == "bigquery" and bq_insert_all:
         lines = [f"INSERT ALL"]
         for row in rows:
-            values = ", ".join(_sql_literal(row.get(c)) for c in cols)
+            values = ", ".join(literal_fn(row.get(c)) for c in cols)
             lines.append(f"INTO {table_sql} ({col_sql}) VALUES ({values})")
         lines.append("SELECT 1;")
         return "\n".join(lines)
 
     lines: list[str] = []
     for row in rows:
-        values = ", ".join(_sql_literal(row.get(c)) for c in cols)
+        values = ", ".join(literal_fn(row.get(c)) for c in cols)
         lines.append(f"INSERT INTO {table_sql} ({col_sql}) VALUES ({values});")
     return "\n".join(lines)
 
@@ -63,19 +81,20 @@ def _render_insert_sql_polars(
     cols = list(rows[0].keys())
     col_sql = ", ".join(_quote_ident(c, dialect) for c in cols)
     table_sql = _quote_ident(table, dialect)
+    literal_fn = _bq_sql_literal if dialect == "bigquery" else _sql_literal
     df = pl.DataFrame(rows)
 
     if dialect == "bigquery" and bq_insert_all:
         lines = ["INSERT ALL"]
         for tup in df.iter_rows(named=True):
-            values = ", ".join(_sql_literal(tup.get(c)) for c in cols)
+            values = ", ".join(literal_fn(tup.get(c)) for c in cols)
             lines.append(f"INTO {table_sql} ({col_sql}) VALUES ({values})")
         lines.append("SELECT 1;")
         return "\n".join(lines)
 
     lines: list[str] = []
     for tup in df.iter_rows(named=True):
-        values = ", ".join(_sql_literal(tup.get(c)) for c in cols)
+        values = ", ".join(literal_fn(tup.get(c)) for c in cols)
         lines.append(f"INSERT INTO {table_sql} ({col_sql}) VALUES ({values});")
     return "\n".join(lines)
 

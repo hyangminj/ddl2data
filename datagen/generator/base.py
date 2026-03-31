@@ -142,6 +142,111 @@ def _extract_in_values(raw: str) -> list[str]:
     return [x.strip().strip("'\"") for x in raw.split(",") if x.strip()]
 
 
+def _normalize_check_expression(expr: str) -> str:
+    expr = expr.strip()
+    match = re.fullmatch(r"CHECK\s*\((.*)\)", expr, flags=re.IGNORECASE | re.DOTALL)
+    if match:
+        expr = match.group(1).strip()
+    return expr
+
+
+def _is_wrapped_expr(expr: str) -> bool:
+    if not (expr.startswith("(") and expr.endswith(")")):
+        return False
+    depth = 0
+    for i, ch in enumerate(expr):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and i != len(expr) - 1:
+                return False
+    return depth == 0
+
+
+def _split_compound_check(expr: str) -> tuple[str, list[str]]:
+    expr = _normalize_check_expression(expr)
+    while _is_wrapped_expr(expr):
+        expr = expr[1:-1].strip()
+
+    placeholder = "__DATAGEN_BETWEEN_AND__"
+    masked = re.sub(
+        r"\bBETWEEN\s+(-?\d+(?:\.\d+)?)\s+AND\s+(-?\d+(?:\.\d+)?)",
+        lambda m: f"BETWEEN {m.group(1)} {placeholder} {m.group(2)}",
+        expr,
+        flags=re.IGNORECASE,
+    )
+
+    def _split_top_level(keyword: str) -> list[str]:
+        parts: list[str] = []
+        depth = 0
+        start = 0
+        i = 0
+        in_single = False
+        in_double = False
+        while i < len(masked):
+            ch = masked[i]
+            if ch == "'" and not in_double:
+                if in_single and i + 1 < len(masked) and masked[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = not in_single
+                i += 1
+                continue
+            if ch == '"' and not in_single:
+                if in_double and i + 1 < len(masked) and masked[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = not in_double
+                i += 1
+                continue
+            if in_single or in_double:
+                i += 1
+                continue
+            if ch == "(":
+                depth += 1
+                i += 1
+                continue
+            if ch == ")":
+                depth = max(depth - 1, 0)
+                i += 1
+                continue
+            if depth == 0 and masked[i : i + len(keyword)].upper() == keyword:
+                before = masked[i - 1] if i > 0 else " "
+                after_idx = i + len(keyword)
+                after = masked[after_idx] if after_idx < len(masked) else " "
+                if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
+                    parts.append(masked[start:i].strip().replace(placeholder, "AND"))
+                    start = after_idx
+                    i = after_idx
+                    continue
+            i += 1
+        if not parts:
+            return []
+        parts.append(masked[start:].strip().replace(placeholder, "AND"))
+        return [part for part in parts if part]
+
+    or_parts = _split_top_level("OR")
+    if len(or_parts) > 1:
+        cleaned = []
+        for part in or_parts:
+            while _is_wrapped_expr(part):
+                part = part[1:-1].strip()
+            cleaned.append(part)
+        return ("or", cleaned)
+
+    and_parts = _split_top_level("AND")
+    if len(and_parts) > 1:
+        cleaned = []
+        for part in and_parts:
+            while _is_wrapped_expr(part):
+                part = part[1:-1].strip()
+            cleaned.append(part)
+        return ("and", cleaned)
+
+    return ("single", [expr.replace(placeholder, "AND")])
+
+
 def _regex_to_sample(pattern: str) -> str | None:
     # Practical limited support for common forms used in checks.
     p = pattern.strip().strip("'\"")
@@ -157,7 +262,15 @@ def _regex_to_sample(pattern: str) -> str | None:
 
 
 def _enforce_simple_check(row: dict[str, Any], col_by_name: dict[str, ColumnMeta], check: CheckConstraintMeta) -> None:
-    expr = check.expression.strip()
+    mode, parts = _split_compound_check(check.expression)
+    if mode == "and":
+        for part in parts:
+            _enforce_simple_check(row, col_by_name, CheckConstraintMeta(expression=part))
+        return
+    if mode == "or":
+        _enforce_simple_check(row, col_by_name, CheckConstraintMeta(expression=random.choice(parts)))
+        return
+    expr = parts[0]
 
     # col BETWEEN a AND b
     m_between = re.search(r"(\w+)\s+BETWEEN\s+(-?\d+(?:\.\d+)?)\s+AND\s+(-?\d+(?:\.\d+)?)", expr, flags=re.IGNORECASE)
@@ -168,10 +281,14 @@ def _enforce_simple_check(row: dict[str, Any], col_by_name: dict[str, ColumnMeta
             return
         lo, hi = sorted((float(a_raw), float(b_raw)))
         current = row.get(col_name)
-        try:
-            val = float(current)
-        except (TypeError, ValueError):
-            val = lo
+        if current is None:
+            row[col_name] = _typed_number(lo, _kind(col.type_name), epsilon=0.0)
+            return
+        else:
+            try:
+                val = float(current)
+            except (TypeError, ValueError):
+                val = lo
         if val < lo:
             row[col_name] = _typed_number(lo, _kind(col.type_name), epsilon=0.0)
         elif val > hi:
@@ -209,10 +326,10 @@ def _enforce_simple_check(row: dict[str, Any], col_by_name: dict[str, ColumnMeta
     if m:
         col_name, op, raw = m.groups()
         col = col_by_name.get(col_name)
-        if not col or row.get(col_name) is None:
+        if not col:
             return
         limit = float(raw)
-        row[col_name] = _apply_numeric_op(row[col_name], op, limit, col)
+        row[col_name] = _apply_numeric_op(row.get(col_name), op, limit, col)
 
 
 def _make_unique_candidate(col: ColumnMeta, i: int, attempt: int) -> Any:
@@ -299,10 +416,10 @@ def _generate_table_rows_polars(
 ) -> list[dict[str, Any]]:
     """Best-effort vectorized generation path for simple tables.
 
-    Fallback policy: if table has FK/check/unique constraints, use python engine.
+    Fallback policy: if table has check/unique constraints, use python engine.
     """
-    has_row_level_constraints = bool(table.foreign_keys or table.check_constraints or any(c.unique or c.primary_key for c in table.columns))
-    if has_row_level_constraints:
+    has_strict_constraints = bool(table.check_constraints or any(c.unique or c.primary_key for c in table.columns))
+    if has_strict_constraints:
         return _generate_table_rows_python(table, rows, dist_overrides, generated)
 
     try:
@@ -312,6 +429,13 @@ def _generate_table_rows_polars(
 
     data_cols: dict[str, list[Any]] = {}
     for col in table.columns:
+        fk = next((x for x in table.foreign_keys if x.column == col.name), None)
+        if fk and generated.get(fk.ref_table):
+            parent_values = [r.get(fk.ref_column) for r in generated[fk.ref_table]]
+            if parent_values:
+                data_cols[col.name] = random.choices(parent_values, k=rows)
+                continue
+
         dist = dist_overrides.get(f"{table.name}.{col.name}") or dist_overrides.get(col.name)
         if dist is not None:
             data_cols[col.name] = [sample_with_dist(dist) for _ in range(rows)]

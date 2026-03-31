@@ -15,7 +15,7 @@ from datagen.parser.ddl import parse_ddl_file
 from datagen.parser.graph import generation_order
 from datagen.parser.introspect import load_schema_from_db
 from datagen.report import build_report
-from datagen.validation import validate_generated_data
+from datagen.validation import validate_check_constraints, validate_generated_data
 from datagen.writer.csv_writer import write_csv
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
@@ -95,8 +95,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=None, help="Random seed for reproducible generation")
     p.add_argument("--output-path", default=None, help="Optional output file/path (json/sql file or csv dir)")
     p.add_argument("--report-path", default=None, help="Optional JSON report path for generated data profile")
+    p.add_argument("--strict-checks", action="store_true", default=None, help="Validate generated rows against supported CHECK constraints")
     p.add_argument("--engine", choices=["python", "polars"], default=None, help="Generation/render engine")
     p.add_argument("--bq-insert-all", action="store_true", default=None, help="When --out bigquery, render INSERT ALL syntax")
+    p.add_argument("--parquet-compression", choices=["snappy", "zstd", "lz4", "gzip", "none"], default=None, help="Parquet compression codec (default: snappy)")
     return p
 
 
@@ -111,6 +113,8 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "engine": "python",
         "table_rows": [],
         "bq_insert_all": False,
+        "parquet_compression": "snappy",
+        "strict_checks": False,
     }
 
     for k, v in defaults.items():
@@ -129,8 +133,10 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "seed",
         "output_path",
         "report_path",
+        "strict_checks",
         "engine",
         "bq_insert_all",
+        "parquet_compression",
     ]:
         if getattr(args, key) is None:
             if key in cfg:
@@ -198,6 +204,14 @@ def main() -> None:
         _insert_via_sqlalchemy(args.db_url, data)
 
     validation = validate_generated_data(tables, data)
+    if args.strict_checks:
+        check_validation = validate_check_constraints(tables, data)
+        validation["counts"]["check_violations"] = check_validation["check_violations"]
+        validation["sample_issues"].extend(check_validation["check_details"])
+        validation["counts"]["sample_issue_count"] = len(validation["sample_issues"])
+        if check_validation["check_violations"] > 0:
+            validation["pass"] = False
+            validation["counts"]["total_failures"] += check_validation["check_violations"]
 
     if args.report_path:
         report = build_report(data, validation=validation)
@@ -217,7 +231,7 @@ def main() -> None:
 
     if args.out == "parquet":
         out_dir = args.output_path or "./output_parquet"
-        files = write_parquet(data, out_dir)
+        files = write_parquet(data, out_dir, compression=args.parquet_compression)
         print("\n".join(files))
         return
 
