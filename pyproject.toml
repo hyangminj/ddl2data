@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "datagenerator"
+name = "loadforge"
 version = "0.1.0"
 description = "Generate synthetic data from SQL DDL or live database schemas"
 readme = "README.md"
