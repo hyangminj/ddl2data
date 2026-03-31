@@ -15,6 +15,7 @@ from datagen.parser.ddl import parse_ddl_file
 from datagen.parser.graph import generation_order
 from datagen.parser.introspect import load_schema_from_db
 from datagen.report import build_report
+from datagen.validation import validate_generated_data
 from datagen.writer.csv_writer import write_csv
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
@@ -57,7 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Generation/output
     p.add_argument("--rows", type=int, help="Rows per table")
-    p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "json", "csv"], default=None)
+    p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv"], default=None)
     p.add_argument("--db-url", help="DB URL for schema introspection and/or direct insert")
     p.add_argument("--insert", action="store_true", default=None, help="Insert generated rows into --db-url")
     p.add_argument(
@@ -69,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=None, help="Random seed for reproducible generation")
     p.add_argument("--output-path", default=None, help="Optional output file/path (json/sql file or csv dir)")
     p.add_argument("--report-path", default=None, help="Optional JSON report path for generated data profile")
+    p.add_argument("--engine", choices=["python", "polars"], default=None, help="Execution engine for render/write pipeline")
     return p
 
 
@@ -80,6 +82,7 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "dist": [],
         "schema_from_db": False,
         "insert": False,
+        "engine": "python",
     }
 
     for k, v in defaults.items():
@@ -98,6 +101,7 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "seed",
         "output_path",
         "report_path",
+        "engine",
     ]:
         if getattr(args, key) is None:
             if key in cfg:
@@ -128,6 +132,12 @@ def main() -> None:
     args = build_parser().parse_args()
     args = _merge_config(args)
 
+    if args.engine == "polars":
+        try:
+            import polars  # noqa: F401
+        except Exception as e:
+            raise SystemExit("--engine polars requires optional dependency 'polars' (pip install polars)") from e
+
     if args.seed is not None:
         random.seed(args.seed)
         Faker.seed(args.seed)
@@ -142,26 +152,28 @@ def main() -> None:
             raise SystemExit("--insert requires --db-url")
         _insert_via_sqlalchemy(args.db_url, data)
 
+    validation = validate_generated_data(tables, data)
+
     if args.report_path:
-        report = build_report(data)
-        write_json(report, args.report_path)
+        report = build_report(data, validation=validation)
+        write_json(report, args.report_path, engine=args.engine)
 
     if args.out == "json":
-        payload = write_json(data, args.output_path)
+        payload = write_json(data, args.output_path, engine=args.engine)
         if not args.output_path:
             print(payload)
         return
 
     if args.out == "csv":
         out_dir = args.output_path or "./output_csv"
-        files = write_csv(data, out_dir)
+        files = write_csv(data, out_dir, engine=args.engine)
         print("\n".join(files))
         return
 
-    dialect = args.out if args.out in {"postgres", "mysql", "sqlite"} else "postgres"
+    dialect = args.out if args.out in {"postgres", "mysql", "sqlite", "bigquery"} else "postgres"
     chunks = []
     for table_name in order:
-        sql = render_insert_sql(table_name, data.get(table_name, []), dialect=dialect)
+        sql = render_insert_sql(table_name, data.get(table_name, []), dialect=dialect, engine=args.engine)
         if sql:
             chunks.append(sql)
     output = "\n".join(chunks)

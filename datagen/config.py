@@ -28,10 +28,24 @@ class ColumnMeta:
 
 
 @dataclass
+class UniqueConstraintMeta:
+    columns: list[str]
+    name: str | None = None
+
+
+@dataclass
+class CheckConstraintMeta:
+    expression: str
+    name: str | None = None
+
+
+@dataclass
 class TableMeta:
     name: str
     columns: list[ColumnMeta]
     foreign_keys: list[ForeignKey] = field(default_factory=list)
+    unique_constraints: list[UniqueConstraintMeta] = field(default_factory=list)
+    check_constraints: list[CheckConstraintMeta] = field(default_factory=list)
 
     def column(self, name: str) -> ColumnMeta:
         for c in self.columns:

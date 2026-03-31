@@ -4,7 +4,9 @@ from collections import Counter
 from typing import Any
 
 
-def build_report(data: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+def build_report(
+    data: dict[str, list[dict[str, Any]]], validation: dict[str, Any] | None = None
+) -> dict[str, Any]:
     tables: dict[str, Any] = {}
     for table, rows in data.items():
         row_count = len(rows)
@@ -39,4 +41,5 @@ def build_report(data: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
         "tables": tables,
         "total_tables": len(data),
         "total_rows": sum(len(v) for v in data.values()),
+        "validation": validation or {"pass": True, "counts": {}, "sample_issues": []},
     }

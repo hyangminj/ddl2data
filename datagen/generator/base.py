@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import random
+import re
 from typing import Any
 
 from faker import Faker
 
-from datagen.config import ColumnMeta, DistSpec, TableMeta
+from datagen.config import CheckConstraintMeta, ColumnMeta, DistSpec, TableMeta
 from datagen.generator.dist import sample_with_dist
 
 fake = Faker()
@@ -86,6 +87,58 @@ def _default_value(col: ColumnMeta) -> Any:
     return fake.word()
 
 
+def _enforce_simple_check(row: dict[str, Any], check: CheckConstraintMeta) -> None:
+    expr = check.expression
+    m = re.search(r"(\w+)\s*(>=|<=|>|<|=)\s*(-?\d+(?:\.\d+)?)", expr)
+    if m:
+        col, op, raw = m.groups()
+        if col not in row or row[col] is None:
+            return
+        limit = float(raw)
+        val = row[col]
+        if isinstance(val, bool):
+            return
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            return
+        if op == ">=" and num < limit:
+            row[col] = int(limit) if isinstance(val, int) else limit
+        elif op == ">" and num <= limit:
+            row[col] = int(limit + 1) if isinstance(val, int) else (limit + 0.01)
+        elif op == "<=" and num > limit:
+            row[col] = int(limit) if isinstance(val, int) else limit
+        elif op == "<" and num >= limit:
+            row[col] = int(limit - 1) if isinstance(val, int) else (limit - 0.01)
+        elif op == "=":
+            row[col] = int(limit) if isinstance(val, int) else limit
+        return
+
+    m_in = re.search(r"(\w+)\s+IN\s*\(([^\)]+)\)", expr, flags=re.IGNORECASE)
+    if m_in:
+        col, raw = m_in.groups()
+        if col not in row:
+            return
+        values = [x.strip().strip("'\"") for x in raw.split(",") if x.strip()]
+        if values:
+            row[col] = random.choice(values)
+
+
+def _make_unique_candidate(col: ColumnMeta, i: int, attempt: int) -> Any:
+    k = _kind(col.type_name)
+    base = i + 1 + attempt
+    if k == "int":
+        return base
+    if k == "float":
+        return float(base)
+    if k == "uuid":
+        return str(fake.uuid4())
+    if k == "str":
+        raw = f"{col.name}_{base}_{random.randint(1, 9999)}"
+        return raw[: col.max_length] if col.max_length else raw
+    return _default_value(col)
+
+
 def generate_table_rows(
     table: TableMeta,
     rows: int,
@@ -93,13 +146,14 @@ def generate_table_rows(
     generated: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    unique_columns = {c.name for c in table.columns if c.unique or c.primary_key}
+    seen_unique: dict[str, set[Any]] = {c: set() for c in unique_columns}
 
     for i in range(rows):
         row: dict[str, Any] = {}
-        make_edge = (i % 20 == 0)
+        make_edge = i % 20 == 0
 
         for col in table.columns:
-            # FK assignment first
             fk = next((x for x in table.foreign_keys if x.column == col.name), None)
             if fk and generated.get(fk.ref_table):
                 parent = random.choice(generated[fk.ref_table])
@@ -120,10 +174,25 @@ def generate_table_rows(
             else:
                 row[col.name] = _default_value(col)
 
-        # keep simple deterministic-ish PK when integer and missing/nullable
         for col in table.columns:
             if col.primary_key and row.get(col.name) is None and _kind(col.type_name) == "int":
                 row[col.name] = i + 1
+
+        for ck in table.check_constraints:
+            _enforce_simple_check(row, ck)
+
+        for col in table.columns:
+            if col.name not in unique_columns:
+                continue
+            value = row.get(col.name)
+            if value is None:
+                continue
+            attempts = 0
+            while value in seen_unique[col.name] and attempts < 10:
+                value = _make_unique_candidate(col, i, attempts + 1)
+                attempts += 1
+            row[col.name] = value
+            seen_unique[col.name].add(value)
 
         out.append(row)
 

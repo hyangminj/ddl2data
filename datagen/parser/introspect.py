@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from datagen.config import ColumnMeta, ForeignKey, TableMeta
+from datagen.config import CheckConstraintMeta, ColumnMeta, ForeignKey, TableMeta, UniqueConstraintMeta
 
 
 def _safe_len(col_type: object) -> int | None:
@@ -27,8 +27,13 @@ def load_schema_from_db(engine: Engine, tables: Iterable[str] | None = None) -> 
         pk_cols = set(pk_info.get("constrained_columns") or [])
 
         unique_cols: set[str] = set()
+        unique_constraints: list[UniqueConstraintMeta] = []
         for u in inspector.get_unique_constraints(table_name) or []:
-            for c in (u.get("column_names") or []):
+            cols = [c for c in (u.get("column_names") or []) if c]
+            if not cols:
+                continue
+            unique_constraints.append(UniqueConstraintMeta(columns=cols, name=u.get("name")))
+            for c in cols:
                 unique_cols.add(c)
 
         columns: list[ColumnMeta] = []
@@ -58,6 +63,22 @@ def load_schema_from_db(engine: Engine, tables: Iterable[str] | None = None) -> 
                 ref_col = referred[min(i, len(referred) - 1)] if referred else "id"
                 fks.append(ForeignKey(column=local_col, ref_table=ref_table, ref_column=ref_col))
 
-        metas.append(TableMeta(name=table_name, columns=columns, foreign_keys=fks))
+        checks: list[CheckConstraintMeta] = []
+        get_checks = getattr(inspector, "get_check_constraints", None)
+        if callable(get_checks):
+            for ck in get_checks(table_name) or []:
+                expr = ck.get("sqltext") or ck.get("text") or ""
+                if expr:
+                    checks.append(CheckConstraintMeta(expression=str(expr), name=ck.get("name")))
+
+        metas.append(
+            TableMeta(
+                name=table_name,
+                columns=columns,
+                foreign_keys=fks,
+                unique_constraints=unique_constraints,
+                check_constraints=checks,
+            )
+        )
 
     return metas

@@ -15,6 +15,11 @@ dependencies = [
   "PyYAML>=6.0.0",
 ]
 
+[project.optional-dependencies]
+polars = [
+  "polars>=1.0.0",
+]
+
 [project.scripts]
 datagen = "datagen.cli:main"
 

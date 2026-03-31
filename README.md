@@ -4,7 +4,7 @@
 
 It parses table definitions and foreign-key relationships, generates rows with sensible defaults + statistical distributions, and can either:
 
-- print/save output (`postgres` SQL, `json`, `csv`), or
+- print/save output (`postgres`/`mysql`/`sqlite`/`bigquery` SQL, `json`, `csv`), or
 - insert directly into a database via SQLAlchemy.
 
 ---
@@ -12,6 +12,7 @@ It parses table definitions and foreign-key relationships, generates rows with s
 ## What it does
 
 - Parse DDL with `sqlglot` (table/column/basic constraints/FK)
+- Capture unique/check constraint metadata (including composite unique where available)
 - Or introspect schema directly from DB via SQLAlchemy inspector (`--schema-from-db`)
 - Build FK dependency graph and generate parent tables first
 - Generate fake values by column type (Faker + type mapping)
@@ -63,6 +64,7 @@ After install, both are available:
 datagen --ddl schema.sql --rows 100 --out postgres
 datagen --ddl schema.sql --rows 100 --out mysql
 datagen --ddl schema.sql --rows 100 --out sqlite
+datagen --ddl schema.sql --rows 100 --out bigquery
 ```
 
 ### 2) Generate JSON from DDL
@@ -123,11 +125,24 @@ dist = [
 ]
 ```
 
-### 8) Write generation report
+### 8) Write generation report (with validation summary)
 
 ```bash
 datagen --ddl schema.sql --rows 500 --report-path report.json --out json --output-path data.json
 ```
+
+Report JSON now includes validation counts and sample issues for:
+- FK integrity violations
+- non-null violations
+- unique collisions
+
+### 9) Use Polars output engine (optional)
+
+```bash
+datagen --ddl schema.sql --rows 100000 --out csv --engine polars --output-path ./csv_out
+```
+
+If `polars` is not installed and `--engine polars` is selected, the CLI exits with a clear error.
 
 ---
 
@@ -187,7 +202,8 @@ This seeds Python random + Faker for stable reruns.
 datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
         [--config config.toml]
         --rows 100
-        [--out postgres|mysql|sqlite|json|csv]
+        [--out postgres|mysql|sqlite|bigquery|json|csv]
+        [--engine python|polars]
         [--output-path PATH]
         [--insert --db-url URL]
         [--dist ...] [--dist ...]
@@ -200,13 +216,14 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
 - `--schema-from-db`: introspect table schema from DB
 - `--tables`: optional comma-separated table filter for DB introspection mode
 - `--rows` (required): rows generated **per table**
-- `--out`: output format (default: `postgres`)
+- `--out`: output format (default: `postgres`), includes `bigquery`
+- `--engine`: `python` (default) or `polars` for accelerated json/csv/sql render pipeline
 - `--output-path`: output file path (`json`/`sql`) or directory (`csv`)
 - `--db-url`: DB connection URL
 - `--insert`: insert generated rows into `--db-url`
 - `--dist`: distribution override(s)
 - `--seed`: deterministic run seed
-- `--report-path`: write a JSON profile report (rows/null-ratio/top-values)
+- `--report-path`: write a JSON profile report (rows/null-ratio/top-values) plus validation summary
 
 ---
 
@@ -235,14 +252,13 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 
 - `--rows` is per table (not per-table custom counts yet)
 - DDL support is strong for common patterns, but not every advanced SQL dialect feature
-- Constraint-aware generation is basic (complex uniqueness/check constraints not fully modeled)
+- Constraint-aware generation is lightweight: basic unique/check handling is supported, but complex SQL expressions are not fully modeled
 
 ---
 
 ## Roadmap (proposed)
 
-- Better constraint handling (composite unique, richer checks)
-- Multi-dialect writers (MySQL/SQLite/BigQuery)
-- Config file support (YAML/TOML)
-- Stronger validation/reporting of generated datasets
-- Performance engine option (`--engine python|polars`) for vectorized generation and faster file output on large datasets
+- Richer check-constraint expression support (beyond simple comparison / IN heuristics)
+- Per-table row count control
+- Advanced dialect-specific SQL features
+- Direct vectorized generation engine (not only output/render acceleration)
