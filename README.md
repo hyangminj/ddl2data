@@ -311,3 +311,9 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 - CHECK-aware generation and `--strict-checks` cover a practical subset: numeric comparisons, `BETWEEN`, `IN (...)`, regex-like forms, and nested `AND`/`OR`.
 - Function-heavy or cross-column CHECK expressions are handled best-effort rather than fully modeled.
 - `--engine polars` still falls back to Python for tables with CHECK, unique, or primary-key constraints.
+
+---
+
+## License
+
+Apache License 2.0. See `LICENSE`.
