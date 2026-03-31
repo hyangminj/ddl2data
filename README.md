@@ -46,9 +46,9 @@ It parses table definitions and foreign-key relationships, generates rows with s
 From PyPI:
 
 ```bash
-pipx install datagenerator
+pipx install loadforge
 # or
-pip install datagenerator
+pip install loadforge
 ```
 
 The installed CLI command remains:
@@ -60,7 +60,7 @@ datagen --help
 Optional Polars support from PyPI:
 
 ```bash
-pip install "datagenerator[polars]"
+pip install "loadforge[polars]"
 ```
 
 From source:
