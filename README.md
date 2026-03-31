@@ -307,6 +307,7 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
   - `BETWEEN`
   - `IN (...)`
   - regex-like forms (`~`, `REGEXP_LIKE`) for common patterns
+- Nested `AND/OR` compound CHECK constraint support
 - Per-table row count control:
   - CLI: `--table-rows users=20,orders=500`
   - Config: `table_rows = { users = 20, orders = 500 }`
@@ -314,27 +315,27 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 - Advanced SQL output options:
   - `--out bigquery` with dataset/project-qualified table path quoting
   - BigQuery `--bq-insert-all` mode
+  - BigQuery typed literals (`DATE`, `TIMESTAMP`) in SQL output
   - `--out parquet` (per-table parquet files)
+  - `--parquet-compression` option (`snappy`/`zstd`/`lz4`/`gzip`/`none`)
 - Polars engine support:
   - `--engine polars` for generation + render/write path where practical
   - explicit fallback to python generator for constraint-heavy tables
+  - FK-only table optimization to reduce python fallback surface
 - Validation/reporting:
   - FK / non-null / unique collision checks
+  - `--strict-checks` mode with CHECK violation counters in report
   - report summary + sample issues via `--report-path`
 
 ### ⏳ Remaining / future improvement
 
-- Even richer CHECK parser coverage for complex SQL expressions and nested predicates
-- Reduce python fallback surface in `--engine polars` for constraint-heavy schemas
+- Even richer CHECK parser coverage for function-heavy constraints (e.g., `COALESCE`, `CASE WHEN`)
 - Dialect-specific SQL polishing for edge cases (escaping/typing nuances by engine)
 - Optional per-table advanced generation profiles (beyond row count overrides)
 
 ## Hand-off TODO (for next dev session)
 
-1. Expand CHECK parser to support nested `AND/OR` and function-heavy constraints.
-2. Add strict mode for CHECK enforcement with violation counters.
-3. Improve BigQuery writer for typed literals and STRUCT/ARRAY-safe escaping.
-4. Add parquet compression/codec options (snappy/zstd) via CLI.
-5. Improve polars generator to support selected FK cases without full python fallback.
-6. Add end-to-end fixtures for mixed constraints + per-table row overrides.
-7. Add changelog/release note for `v0.3.0` snapshot.
+1. Add support for function-based CHECK constraints (`COALESCE`, `LENGTH`, `UPPER`, etc.)
+2. Add multi-column composite CHECK evaluation (e.g., `CHECK(start_date < end_date)`)
+3. Add `STRUCT`/`ARRAY` column type support for BigQuery
+4. Add changelog/release note for `v0.3.0` snapshot
