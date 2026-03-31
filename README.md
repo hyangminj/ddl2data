@@ -43,7 +43,30 @@ It parses table definitions and foreign-key relationships, generates rows with s
 
 ## Install
 
+From PyPI:
+
 ```bash
+pipx install datagenerator
+# or
+pip install datagenerator
+```
+
+The installed CLI command remains:
+
+```bash
+datagen --help
+```
+
+Optional Polars support from PyPI:
+
+```bash
+pip install "datagenerator[polars]"
+```
+
+From source:
+
+```bash
+git clone https://github.com/hyangminj/datagen.git
 cd datagen
 python3 -m venv .venv
 . .venv/bin/activate
@@ -60,6 +83,8 @@ After install, both are available:
 
 - `python -m datagen.cli ...`
 - `datagen ...`
+
+Release files are also attached on GitHub Releases as a wheel (`.whl`) and source archive (`.tar.gz`).
 
 ---
 

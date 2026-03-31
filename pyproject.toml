@@ -3,19 +3,39 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "datagen"
+name = "datagenerator"
 version = "0.1.0"
-description = "Generate synthetic data from SQL DDL"
+description = "Generate synthetic data from SQL DDL or live database schemas"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
+keywords = ["synthetic-data", "sql", "ddl", "cli", "faker"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Database",
+  "Topic :: Software Development :: Testing",
+  "Topic :: Utilities",
+]
 dependencies = [
   "sqlglot>=25.0.0",
   "Faker>=25.0.0",
   "SQLAlchemy>=2.0.0",
   "PyYAML>=6.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hyangminj/datagen"
+Repository = "https://github.com/hyangminj/datagen"
+Issues = "https://github.com/hyangminj/datagen/issues"
+Releases = "https://github.com/hyangminj/datagen/releases"
 
 [project.optional-dependencies]
 polars = [
