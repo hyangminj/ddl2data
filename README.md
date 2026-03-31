@@ -4,7 +4,7 @@
 
 It parses table definitions and foreign-key relationships, generates rows with sensible defaults + statistical distributions, and can either:
 
-- print/save output (`postgres`/`mysql`/`sqlite`/`bigquery` SQL, `json`, `csv`), or
+- print/save output (`postgres`/`mysql`/`sqlite`/`bigquery` SQL, `json`, `csv`, `parquet`), or
 - insert directly into a database via SQLAlchemy.
 
 ---
@@ -34,6 +34,7 @@ It parses table definitions and foreign-key relationships, generates rows with s
   - SQLite `INSERT` SQL
   - JSON
   - CSV (per-table files)
+  - Parquet (per-table files)
 - Optional direct insert: `--insert --db-url ...`
 - Config-file driven runs (`--config`) with JSON/TOML/YAML
 - Optional generation report output (`--report-path`)
@@ -77,6 +78,12 @@ datagen --ddl schema.sql --rows 100 --out json --output-path data.json
 
 ```bash
 datagen --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
+```
+
+### 3-1) Generate Parquet from DDL (one file per table)
+
+```bash
+datagen --ddl schema.sql --rows 100 --out parquet --output-path ./parquet_out
 ```
 
 ### 4) Read schema directly from DB and print SQL
@@ -234,7 +241,7 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
         [--config config.toml]
         [--rows 100]
         [--table-rows users=20,orders=500] [--table-rows events=2000]
-        [--out postgres|mysql|sqlite|bigquery|json|csv]
+        [--out postgres|mysql|sqlite|bigquery|json|csv|parquet]
         [--engine python|polars]
         [--bq-insert-all]
         [--output-path PATH]
@@ -250,7 +257,7 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
 - `--tables`: optional comma-separated table filter for DB introspection mode
 - `--rows`: global default rows per table (required unless `--table-rows`/config overrides all needed tables)
 - `--table-rows`: per-table row overrides (`table=count`), repeatable and comma-friendly
-- `--out`: output format (default: `postgres`), includes `bigquery`
+- `--out`: output format (default: `postgres`), includes `bigquery` and `parquet` (`parquet` requires `polars`)
 - `--engine`: `python` (default) or `polars` for generation + render/write where practical (auto-fallback to python for constraint-heavy tables)
 - `--bq-insert-all`: for `--out bigquery`, render `INSERT ALL ... SELECT 1;` blocks
 - `--output-path`: output file path (`json`/`sql`) or directory (`csv`)

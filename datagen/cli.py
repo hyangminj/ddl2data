@@ -19,6 +19,7 @@ from datagen.validation import validate_generated_data
 from datagen.writer.csv_writer import write_csv
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
+from datagen.writer.parquet_writer import write_parquet
 
 
 def _insert_via_sqlalchemy(db_url: str, data: dict[str, list[dict]]) -> None:
@@ -82,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Per-table row count override, e.g. users=100,orders=200 (repeatable)",
     )
-    p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv"], default=None)
+    p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv", "parquet"], default=None)
     p.add_argument("--db-url", help="DB URL for schema introspection and/or direct insert")
     p.add_argument("--insert", action="store_true", default=None, help="Insert generated rows into --db-url")
     p.add_argument(
@@ -211,6 +212,12 @@ def main() -> None:
     if args.out == "csv":
         out_dir = args.output_path or "./output_csv"
         files = write_csv(data, out_dir, engine=args.engine)
+        print("\n".join(files))
+        return
+
+    if args.out == "parquet":
+        out_dir = args.output_path or "./output_parquet"
+        files = write_parquet(data, out_dir)
         print("\n".join(files))
         return
 

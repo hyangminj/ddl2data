@@ -11,6 +11,7 @@ from datagen.validation import validate_generated_data
 from datagen.writer.csv_writer import write_csv
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
+from datagen.writer.parquet_writer import write_parquet
 
 
 def test_parse_ddl_captures_unique_and_check_constraints():
@@ -128,3 +129,19 @@ def test_polars_engine_clear_error_without_dependency(tmp_path: Path, monkeypatc
 
     with pytest.raises(RuntimeError, match="engine=polars"):
         render_insert_sql("users", [{"id": 1}], engine="polars")
+
+
+def test_parquet_writer_clear_error_without_dependency(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "polars":
+            raise ModuleNotFoundError("No module named polars")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError, match="out parquet"):
+        write_parquet({"users": [{"id": 1}]}, str(tmp_path))
