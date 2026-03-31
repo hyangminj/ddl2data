@@ -186,3 +186,4 @@ Current coverage includes parser/graph and generator/writer smoke tests.
 - Multi-dialect writers (MySQL/SQLite/BigQuery)
 - Config file support (YAML/TOML)
 - Stronger validation/reporting of generated datasets
+- Performance engine option (`--engine python|polars`) for vectorized generation and faster file output on large datasets
