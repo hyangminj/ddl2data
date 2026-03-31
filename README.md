@@ -316,4 +316,4 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 
 ## License
 
-Apache License 2.0. See `LICENSE`.
+Apache License 2.0. See [LICENSE](LICENSE).
