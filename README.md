@@ -298,9 +298,43 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 
 ---
 
-## Roadmap (proposed)
+## Roadmap status (as of latest update)
 
-- Richer check-constraint expression support (beyond simple comparison / IN heuristics)
-- Per-table row count control
-- Advanced dialect-specific SQL features
-- Direct vectorized generation engine (not only output/render acceleration)
+### ✅ Implemented
+
+- Rich CHECK-aware heuristics (practical subset):
+  - comparisons (`>=`, `>`, `<=`, `<`, `=`, `!=`)
+  - `BETWEEN`
+  - `IN (...)`
+  - regex-like forms (`~`, `REGEXP_LIKE`) for common patterns
+- Per-table row count control:
+  - CLI: `--table-rows users=20,orders=500`
+  - Config: `table_rows = { users = 20, orders = 500 }`
+  - Global fallback via `--rows`
+- Advanced SQL output options:
+  - `--out bigquery` with dataset/project-qualified table path quoting
+  - BigQuery `--bq-insert-all` mode
+  - `--out parquet` (per-table parquet files)
+- Polars engine support:
+  - `--engine polars` for generation + render/write path where practical
+  - explicit fallback to python generator for constraint-heavy tables
+- Validation/reporting:
+  - FK / non-null / unique collision checks
+  - report summary + sample issues via `--report-path`
+
+### ⏳ Remaining / future improvement
+
+- Even richer CHECK parser coverage for complex SQL expressions and nested predicates
+- Reduce python fallback surface in `--engine polars` for constraint-heavy schemas
+- Dialect-specific SQL polishing for edge cases (escaping/typing nuances by engine)
+- Optional per-table advanced generation profiles (beyond row count overrides)
+
+## Hand-off TODO (for next dev session)
+
+1. Expand CHECK parser to support nested `AND/OR` and function-heavy constraints.
+2. Add strict mode for CHECK enforcement with violation counters.
+3. Improve BigQuery writer for typed literals and STRUCT/ARRAY-safe escaping.
+4. Add parquet compression/codec options (snappy/zstd) via CLI.
+5. Improve polars generator to support selected FK cases without full python fallback.
+6. Add end-to-end fixtures for mixed constraints + per-table row overrides.
+7. Add changelog/release note for `v0.3.0` snapshot.
