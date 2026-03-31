@@ -119,6 +119,7 @@ ddl = "schema.sql"
 rows = 500
 out = "postgres"
 seed = 42
+table_rows = { users = 100, orders = 500, events = 2000 }
 dist = [
   "users.age:normal,mean=33,std=7",
   "orders.amount:pareto,alpha=1.7,xm=1",
@@ -136,13 +137,43 @@ Report JSON now includes validation counts and sample issues for:
 - non-null violations
 - unique collisions
 
-### 9) Use Polars output engine (optional)
+### 9) Use Polars generation+output engine (optional)
 
 ```bash
 datagen --ddl schema.sql --rows 100000 --out csv --engine polars --output-path ./csv_out
 ```
 
-If `polars` is not installed and `--engine polars` is selected, the CLI exits with a clear error.
+`--engine polars` now applies to generation + render/write stages where practical.
+Fallback behavior is explicit: tables with FK/check/unique constraints automatically fall back to the Python row-wise generator to preserve correctness.
+
+If `polars` is not installed and `--engine polars` is selected in writers, a clear dependency error is raised.
+
+### 10) Per-table row counts (with global fallback)
+
+```bash
+datagen --ddl schema.sql --rows 100 --table-rows users=20,orders=500 --table-rows events=2000 --out json
+```
+
+- `--rows` remains the global default.
+- `--table-rows table=count` overrides per table.
+- Supports config files via `table_rows` map.
+
+### 11) BigQuery dataset table + INSERT ALL mode
+
+```bash
+datagen --ddl schema.sql --rows 100 --out bigquery --table-rows users=10 --output-path out.sql
+datagen --ddl schema.sql --rows 100 --out bigquery --bq-insert-all --output-path out_insert_all.sql
+```
+
+BigQuery writer supports table paths like `dataset.table` (quoted as `` `dataset.table` ``) and optional `INSERT ALL` rendering (`--bq-insert-all`).
+
+### 12) Richer CHECK-constraint aware generation (heuristics)
+
+Common CHECK forms now influence generated values:
+- comparison: `age >= 18`, `qty > 0`, `score <= 100`, `x != 0`
+- range: `price BETWEEN 10 AND 20`
+- enum list: `status IN ('A','B','C')`
+- regex-like: `code ~ '^[A-Z]{2}$'`, `REGEXP_LIKE(code, '^[0-9]+$')` (practical subset)
 
 ---
 
@@ -201,9 +232,11 @@ This seeds Python random + Faker for stable reruns.
 ```bash
 datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
         [--config config.toml]
-        --rows 100
+        [--rows 100]
+        [--table-rows users=20,orders=500] [--table-rows events=2000]
         [--out postgres|mysql|sqlite|bigquery|json|csv]
         [--engine python|polars]
+        [--bq-insert-all]
         [--output-path PATH]
         [--insert --db-url URL]
         [--dist ...] [--dist ...]
@@ -215,9 +248,11 @@ datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
 - `--ddl`: input DDL file
 - `--schema-from-db`: introspect table schema from DB
 - `--tables`: optional comma-separated table filter for DB introspection mode
-- `--rows` (required): rows generated **per table**
+- `--rows`: global default rows per table (required unless `--table-rows`/config overrides all needed tables)
+- `--table-rows`: per-table row overrides (`table=count`), repeatable and comma-friendly
 - `--out`: output format (default: `postgres`), includes `bigquery`
-- `--engine`: `python` (default) or `polars` for accelerated json/csv/sql render pipeline
+- `--engine`: `python` (default) or `polars` for generation + render/write where practical (auto-fallback to python for constraint-heavy tables)
+- `--bq-insert-all`: for `--out bigquery`, render `INSERT ALL ... SELECT 1;` blocks
 - `--output-path`: output file path (`json`/`sql`) or directory (`csv`)
 - `--db-url`: DB connection URL
 - `--insert`: insert generated rows into `--db-url`

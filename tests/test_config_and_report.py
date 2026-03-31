@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from datagen.cli import _parse_table_rows_map
 from datagen.config_loader import load_config
 from datagen.report import build_report
 
@@ -47,3 +48,8 @@ def test_load_json_config(tmp_path: Path):
     data = load_config(str(cfg))
     assert data["rows"] == 10
     assert data["out"] == "json"
+
+
+def test_parse_table_rows_map():
+    parsed = _parse_table_rows_map(["users=10,orders=20", "events=5"])
+    assert parsed == {"users": 10, "orders": 20, "events": 5}

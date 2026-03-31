@@ -46,6 +46,24 @@ def _resolve_tables_from_args(args: argparse.Namespace):
     return parse_ddl_file(args.ddl)
 
 
+def _parse_table_rows_map(raw_entries: list[str] | None) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for entry in raw_entries or []:
+        for token in [t.strip() for t in str(entry).split(",") if t.strip()]:
+            if "=" not in token:
+                raise SystemExit(f"Invalid --table-rows token '{token}'. Use table=count")
+            table, count_raw = token.split("=", 1)
+            table = table.strip()
+            try:
+                count = int(count_raw.strip())
+            except ValueError as e:
+                raise SystemExit(f"Invalid row count in --table-rows token '{token}'") from e
+            if count < 0:
+                raise SystemExit(f"Row count must be >=0 in --table-rows token '{token}'")
+            out[table] = count
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Generate synthetic data from DDL or live DB schema")
 
@@ -57,7 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tables", help="Comma-separated table names to include when using --schema-from-db")
 
     # Generation/output
-    p.add_argument("--rows", type=int, help="Rows per table")
+    p.add_argument("--rows", type=int, help="Default rows per table")
+    p.add_argument(
+        "--table-rows",
+        action="append",
+        default=None,
+        help="Per-table row count override, e.g. users=100,orders=200 (repeatable)",
+    )
     p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv"], default=None)
     p.add_argument("--db-url", help="DB URL for schema introspection and/or direct insert")
     p.add_argument("--insert", action="store_true", default=None, help="Insert generated rows into --db-url")
@@ -70,7 +94,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--seed", type=int, default=None, help="Random seed for reproducible generation")
     p.add_argument("--output-path", default=None, help="Optional output file/path (json/sql file or csv dir)")
     p.add_argument("--report-path", default=None, help="Optional JSON report path for generated data profile")
-    p.add_argument("--engine", choices=["python", "polars"], default=None, help="Execution engine for render/write pipeline")
+    p.add_argument("--engine", choices=["python", "polars"], default=None, help="Generation/render engine")
+    p.add_argument("--bq-insert-all", action="store_true", default=None, help="When --out bigquery, render INSERT ALL syntax")
     return p
 
 
@@ -83,6 +108,8 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "schema_from_db": False,
         "insert": False,
         "engine": "python",
+        "table_rows": [],
+        "bq_insert_all": False,
     }
 
     for k, v in defaults.items():
@@ -102,25 +129,40 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         "output_path",
         "report_path",
         "engine",
+        "bq_insert_all",
     ]:
         if getattr(args, key) is None:
             if key in cfg:
                 setattr(args, key, cfg[key])
 
-    # dist handling (list merge, CLI wins by append)
+    # dist handling (CLI wins)
     cfg_dist = cfg.get("dist", []) if isinstance(cfg, dict) else []
     if not isinstance(cfg_dist, list):
         cfg_dist = []
     cli_dist = args.dist or []
-    if not cli_dist and cfg_dist:
-        args.dist = [str(x) for x in cfg_dist]
-    elif cli_dist:
+    if cli_dist:
         args.dist = cli_dist
     else:
-        args.dist = []
+        args.dist = [str(x) for x in cfg_dist]
+
+    # table-rows: CLI value or config map/list
+    if args.table_rows:
+        table_rows_raw = args.table_rows
+    else:
+        cfg_tr = cfg.get("table_rows", {}) if isinstance(cfg, dict) else {}
+        if isinstance(cfg_tr, dict):
+            table_rows_raw = [f"{k}={v}" for k, v in cfg_tr.items()]
+        elif isinstance(cfg_tr, list):
+            table_rows_raw = [str(x) for x in cfg_tr]
+        else:
+            table_rows_raw = []
+    args.table_rows = table_rows_raw
+
+    if args.rows is None and not args.table_rows:
+        raise SystemExit("--rows is required unless --table-rows is set (or configured)")
 
     if args.rows is None:
-        raise SystemExit("--rows is required (or set rows in --config)")
+        args.rows = 0
 
     if args.out is None:
         args.out = "postgres"
@@ -132,12 +174,6 @@ def main() -> None:
     args = build_parser().parse_args()
     args = _merge_config(args)
 
-    if args.engine == "polars":
-        try:
-            import polars  # noqa: F401
-        except Exception as e:
-            raise SystemExit("--engine polars requires optional dependency 'polars' (pip install polars)") from e
-
     if args.seed is not None:
         random.seed(args.seed)
         Faker.seed(args.seed)
@@ -145,7 +181,15 @@ def main() -> None:
     tables = _resolve_tables_from_args(args)
     order = generation_order(tables)
     dist_map = dict(parse_dist_arg(d) for d in (args.dist or []))
-    data = generate_all(tables, order, int(args.rows), dist_map)
+    table_rows_map = _parse_table_rows_map(args.table_rows)
+    data = generate_all(
+        tables,
+        order,
+        int(args.rows),
+        dist_map,
+        table_rows=table_rows_map,
+        engine=args.engine,
+    )
 
     if args.insert:
         if not args.db_url:
@@ -173,7 +217,13 @@ def main() -> None:
     dialect = args.out if args.out in {"postgres", "mysql", "sqlite", "bigquery"} else "postgres"
     chunks = []
     for table_name in order:
-        sql = render_insert_sql(table_name, data.get(table_name, []), dialect=dialect, engine=args.engine)
+        sql = render_insert_sql(
+            table_name,
+            data.get(table_name, []),
+            dialect=dialect,
+            engine=args.engine,
+            bq_insert_all=bool(args.bq_insert_all),
+        )
         if sql:
             chunks.append(sql)
     output = "\n".join(chunks)

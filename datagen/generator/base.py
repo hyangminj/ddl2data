@@ -80,48 +80,139 @@ def _default_value(col: ColumnMeta) -> Any:
     if k == "uuid":
         return str(fake.uuid4())
     if k == "str":
-        val = fake.text(max_nb_chars=min(col.max_length or 40, 120)).replace("\n", " ")
+        max_chars = min(col.max_length or 40, 120)
+        if max_chars < 5:
+            val = fake.lexify(text="?" * max_chars) if max_chars > 0 else ""
+        else:
+            val = fake.text(max_nb_chars=max_chars).replace("\n", " ")
         if col.max_length:
             return val[: col.max_length]
         return val
     return fake.word()
 
 
-def _enforce_simple_check(row: dict[str, Any], check: CheckConstraintMeta) -> None:
-    expr = check.expression
-    m = re.search(r"(\w+)\s*(>=|<=|>|<|=)\s*(-?\d+(?:\.\d+)?)", expr)
-    if m:
-        col, op, raw = m.groups()
-        if col not in row or row[col] is None:
+def _typed_number(limit: float, col_kind: str, epsilon: float = 0.01) -> int | float:
+    if col_kind == "int":
+        return int(round(limit))
+    return float(limit + epsilon)
+
+
+def _coerce_to_col_type(value: Any, col: ColumnMeta) -> Any:
+    if value is None:
+        return None
+    k = _kind(col.type_name)
+    try:
+        if k == "int":
+            return int(float(value))
+        if k == "float":
+            return float(value)
+        if k == "str":
+            s = str(value)
+            return s[: col.max_length] if col.max_length else s
+    except Exception:
+        return value
+    return value
+
+
+def _apply_numeric_op(current: Any, op: str, limit: float, col: ColumnMeta) -> Any:
+    k = _kind(col.type_name)
+    try:
+        num = float(current)
+    except (TypeError, ValueError):
+        num = None
+
+    if op == ">=":
+        target = limit if num is None or num < limit else num
+    elif op == ">":
+        target = limit + (1 if k == "int" else 0.01) if num is None or num <= limit else num
+    elif op == "<=":
+        target = limit if num is None or num > limit else num
+    elif op == "<":
+        target = limit - (1 if k == "int" else 0.01) if num is None or num >= limit else num
+    elif op in {"=", "=="}:
+        target = limit
+    elif op in {"!=", "<>"}:
+        target = limit + (1 if k == "int" else 0.01) if num is None or num == limit else num
+    else:
+        return current
+    return _typed_number(float(target), k, epsilon=0.0 if op in {"=", "==", ">=", "<="} else 0.01)
+
+
+def _extract_in_values(raw: str) -> list[str]:
+    return [x.strip().strip("'\"") for x in raw.split(",") if x.strip()]
+
+
+def _regex_to_sample(pattern: str) -> str | None:
+    # Practical limited support for common forms used in checks.
+    p = pattern.strip().strip("'\"")
+    if p in {"^[A-Za-z]+$", "^[a-zA-Z]+$"}:
+        return "SampleText"
+    if p in {"^[0-9]+$", "^\\d+$"}:
+        return str(random.randint(1000, 9999))
+    if p in {"^[A-Z]{2}$"}:
+        return "KR"
+    if p == "^[A-Z]{3}$":
+        return "SEO"
+    return None
+
+
+def _enforce_simple_check(row: dict[str, Any], col_by_name: dict[str, ColumnMeta], check: CheckConstraintMeta) -> None:
+    expr = check.expression.strip()
+
+    # col BETWEEN a AND b
+    m_between = re.search(r"(\w+)\s+BETWEEN\s+(-?\d+(?:\.\d+)?)\s+AND\s+(-?\d+(?:\.\d+)?)", expr, flags=re.IGNORECASE)
+    if m_between:
+        col_name, a_raw, b_raw = m_between.groups()
+        col = col_by_name.get(col_name)
+        if not col:
             return
-        limit = float(raw)
-        val = row[col]
-        if isinstance(val, bool):
-            return
+        lo, hi = sorted((float(a_raw), float(b_raw)))
+        current = row.get(col_name)
         try:
-            num = float(val)
+            val = float(current)
         except (TypeError, ValueError):
-            return
-        if op == ">=" and num < limit:
-            row[col] = int(limit) if isinstance(val, int) else limit
-        elif op == ">" and num <= limit:
-            row[col] = int(limit + 1) if isinstance(val, int) else (limit + 0.01)
-        elif op == "<=" and num > limit:
-            row[col] = int(limit) if isinstance(val, int) else limit
-        elif op == "<" and num >= limit:
-            row[col] = int(limit - 1) if isinstance(val, int) else (limit - 0.01)
-        elif op == "=":
-            row[col] = int(limit) if isinstance(val, int) else limit
+            val = lo
+        if val < lo:
+            row[col_name] = _typed_number(lo, _kind(col.type_name), epsilon=0.0)
+        elif val > hi:
+            row[col_name] = _typed_number(hi, _kind(col.type_name), epsilon=0.0)
         return
 
+    # col IN (...)
     m_in = re.search(r"(\w+)\s+IN\s*\(([^\)]+)\)", expr, flags=re.IGNORECASE)
     if m_in:
-        col, raw = m_in.groups()
-        if col not in row:
+        col_name, raw = m_in.groups()
+        col = col_by_name.get(col_name)
+        if not col:
             return
-        values = [x.strip().strip("'\"") for x in raw.split(",") if x.strip()]
+        values = _extract_in_values(raw)
         if values:
-            row[col] = random.choice(values)
+            row[col_name] = _coerce_to_col_type(random.choice(values), col)
+        return
+
+    # regex-like checks: col ~ 'pattern' OR REGEXP_LIKE(col, 'pattern')
+    m_regex = re.search(r"(\w+)\s*~\s*'([^']+)'", expr, flags=re.IGNORECASE)
+    if not m_regex:
+        m_regex = re.search(r"REGEXP_LIKE\s*\(\s*(\w+)\s*,\s*'([^']+)'\s*\)", expr, flags=re.IGNORECASE)
+    if m_regex:
+        col_name, pattern = m_regex.groups()
+        col = col_by_name.get(col_name)
+        if not col:
+            return
+        sample = _regex_to_sample(pattern)
+        if sample is not None:
+            row[col_name] = _coerce_to_col_type(sample, col)
+        return
+
+    # Generic binary comparisons against numeric literal
+    m = re.search(r"(\w+)\s*(>=|<=|<>|!=|>|<|=|==)\s*(-?\d+(?:\.\d+)?)", expr)
+    if m:
+        col_name, op, raw = m.groups()
+        col = col_by_name.get(col_name)
+        if not col or row.get(col_name) is None:
+            return
+        limit = float(raw)
+        row[col_name] = _apply_numeric_op(row[col_name], op, limit, col)
 
 
 def _make_unique_candidate(col: ColumnMeta, i: int, attempt: int) -> Any:
@@ -139,13 +230,14 @@ def _make_unique_candidate(col: ColumnMeta, i: int, attempt: int) -> Any:
     return _default_value(col)
 
 
-def generate_table_rows(
+def _generate_table_rows_python(
     table: TableMeta,
     rows: int,
     dist_overrides: dict[str, DistSpec],
     generated: dict[str, list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    col_by_name = {c.name: c for c in table.columns}
     unique_columns = {c.name for c in table.columns if c.unique or c.primary_key}
     seen_unique: dict[str, set[Any]] = {c: set() for c in unique_columns}
 
@@ -179,7 +271,7 @@ def generate_table_rows(
                 row[col.name] = i + 1
 
         for ck in table.check_constraints:
-            _enforce_simple_check(row, ck)
+            _enforce_simple_check(row, col_by_name, ck)
 
         for col in table.columns:
             if col.name not in unique_columns:
@@ -199,14 +291,57 @@ def generate_table_rows(
     return out
 
 
+def _generate_table_rows_polars(
+    table: TableMeta,
+    rows: int,
+    dist_overrides: dict[str, DistSpec],
+    generated: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Best-effort vectorized generation path for simple tables.
+
+    Fallback policy: if table has FK/check/unique constraints, use python engine.
+    """
+    has_row_level_constraints = bool(table.foreign_keys or table.check_constraints or any(c.unique or c.primary_key for c in table.columns))
+    if has_row_level_constraints:
+        return _generate_table_rows_python(table, rows, dist_overrides, generated)
+
+    try:
+        import polars as pl
+    except Exception:
+        return _generate_table_rows_python(table, rows, dist_overrides, generated)
+
+    data_cols: dict[str, list[Any]] = {}
+    for col in table.columns:
+        dist = dist_overrides.get(f"{table.name}.{col.name}") or dist_overrides.get(col.name)
+        if dist is not None:
+            data_cols[col.name] = [sample_with_dist(dist) for _ in range(rows)]
+            continue
+
+        if col.nullable:
+            vals = [(_default_value(col) if random.random() >= 0.05 else None) for _ in range(rows)]
+        else:
+            vals = [_default_value(col) for _ in range(rows)]
+        data_cols[col.name] = vals
+
+    df = pl.DataFrame(data_cols)
+    return df.to_dicts()
+
+
 def generate_all(
     tables: list[TableMeta],
     ordered_names: list[str],
     rows: int,
     dist_overrides: dict[str, DistSpec],
+    table_rows: dict[str, int] | None = None,
+    engine: str = "python",
 ) -> dict[str, list[dict[str, Any]]]:
     by_name = {t.name: t for t in tables}
     generated: dict[str, list[dict[str, Any]]] = {}
+    table_rows = table_rows or {}
     for name in ordered_names:
-        generated[name] = generate_table_rows(by_name[name], rows, dist_overrides, generated)
+        row_count = int(table_rows.get(name, rows))
+        if engine == "polars":
+            generated[name] = _generate_table_rows_polars(by_name[name], row_count, dist_overrides, generated)
+        else:
+            generated[name] = _generate_table_rows_python(by_name[name], row_count, dist_overrides, generated)
     return generated
