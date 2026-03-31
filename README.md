@@ -1,6 +1,6 @@
 # datagen
 
-`datagen` is a CLI tool that generates realistic synthetic test data from SQL DDL.
+`datagen` is a CLI tool that generates realistic synthetic test data from SQL DDL **or from a live DB schema**.
 
 It parses table definitions and foreign-key relationships, generates rows with sensible defaults + statistical distributions, and can either:
 
@@ -9,15 +9,20 @@ It parses table definitions and foreign-key relationships, generates rows with s
 
 ---
 
-## What it does (MVP)
+## What it does
 
 - Parse DDL with `sqlglot` (table/column/basic constraints/FK)
+- Or introspect schema directly from DB via SQLAlchemy inspector (`--schema-from-db`)
 - Build FK dependency graph and generate parent tables first
 - Generate fake values by column type (Faker + type mapping)
 - Support distribution overrides:
   - `normal`
   - `poisson`
   - `weighted`
+  - `exponential`
+  - `pareto`
+  - `zipf`
+  - `peak` (time-of-day concentration)
 - Add occasional edge cases:
   - nullable columns can become `NULL`
   - special-character strings
@@ -26,7 +31,7 @@ It parses table definitions and foreign-key relationships, generates rows with s
   - PostgreSQL `INSERT` SQL
   - JSON
   - CSV (per-table files)
-- Optional direct insert: `--db-url`
+- Optional direct insert: `--insert --db-url ...`
 
 ---
 
@@ -48,30 +53,48 @@ After install, both are available:
 
 ## Quick start
 
-### 1) Generate PostgreSQL INSERT SQL to stdout
+### 1) Generate PostgreSQL INSERT SQL from DDL
 
 ```bash
 datagen --ddl schema.sql --rows 100 --out postgres
 ```
 
-### 2) Save JSON output
+### 2) Generate JSON from DDL
 
 ```bash
 datagen --ddl schema.sql --rows 100 --out json --output-path data.json
 ```
 
-### 3) Save CSV output (one file per table)
+### 3) Generate CSV from DDL (one file per table)
 
 ```bash
 datagen --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
 ```
 
-### 4) Insert directly into PostgreSQL
+### 4) Read schema directly from DB and print SQL
+
+```bash
+datagen --schema-from-db --db-url postgresql+psycopg://user:pass@localhost:5432/mydb --rows 100 --out postgres
+```
+
+### 5) Read schema from DB (selected tables only)
+
+```bash
+datagen \
+  --schema-from-db \
+  --db-url postgresql+psycopg://user:pass@localhost:5432/mydb \
+  --tables users,orders,events \
+  --rows 100 \
+  --out json
+```
+
+### 6) Insert generated rows directly into DB
 
 ```bash
 datagen \
   --ddl schema.sql \
   --rows 1000 \
+  --insert \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb
 ```
 
@@ -99,6 +122,13 @@ Examples:
 
 # weighted categorical values
 --dist tier:weighted,A=60%,B=30%,C=10%
+
+# heavy-tail behaviors
+--dist amount:pareto,alpha=1.5,xm=1
+--dist category_rank:zipf,skew=1.8,n=200
+
+# peak-hour timestamps
+--dist created_at:peak,hours=9-11,18-20
 ```
 
 Priority when both exist:
@@ -123,17 +153,23 @@ This seeds Python random + Faker for stable reruns.
 ## CLI reference
 
 ```bash
-datagen --ddl schema.sql --rows 100 [--out postgres|json|csv] [--output-path PATH]
-        [--db-url URL]
+datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
+        --rows 100
+        [--out postgres|json|csv]
+        [--output-path PATH]
+        [--insert --db-url URL]
         [--dist ...] [--dist ...]
         [--seed INT]
 ```
 
-- `--ddl` (required): input DDL file
+- `--ddl`: input DDL file
+- `--schema-from-db`: introspect table schema from DB
+- `--tables`: optional comma-separated table filter for DB introspection mode
 - `--rows` (required): rows generated **per table**
 - `--out`: output format (default: `postgres`)
 - `--output-path`: output file path (`json`/`postgres`) or directory (`csv`)
-- `--db-url`: direct database insert target
+- `--db-url`: DB connection URL
+- `--insert`: insert generated rows into `--db-url`
 - `--dist`: distribution override(s)
 - `--seed`: deterministic run seed
 
@@ -160,28 +196,16 @@ With this schema, `users` rows are generated first, then `orders.user_id` refere
 
 ---
 
-## Tests
-
-```bash
-pytest -q
-```
-
-Current coverage includes parser/graph and generator/writer smoke tests.
-
----
-
-## Current MVP limitations
+## Current limitations
 
 - `--rows` is per table (not per-table custom counts yet)
-- Distribution set is currently limited to `normal`, `poisson`, `weighted`
-- Direct DB insert path is validated for PostgreSQL-focused workflow
 - DDL support is strong for common patterns, but not every advanced SQL dialect feature
+- Constraint-aware generation is basic (complex uniqueness/check constraints not fully modeled)
 
 ---
 
 ## Roadmap (proposed)
 
-- More distributions: zipf / exponential / pareto / peak-hour
 - Better constraint handling (composite unique, richer checks)
 - Multi-dialect writers (MySQL/SQLite/BigQuery)
 - Config file support (YAML/TOML)
