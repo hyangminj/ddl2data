@@ -12,6 +12,7 @@ dependencies = [
   "sqlglot>=25.0.0",
   "Faker>=25.0.0",
   "SQLAlchemy>=2.0.0",
+  "PyYAML>=6.0.0",
 ]
 
 [project.scripts]

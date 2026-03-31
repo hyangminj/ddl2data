@@ -29,9 +29,13 @@ It parses table definitions and foreign-key relationships, generates rows with s
   - near max-length strings
 - Output formats:
   - PostgreSQL `INSERT` SQL
+  - MySQL `INSERT` SQL
+  - SQLite `INSERT` SQL
   - JSON
   - CSV (per-table files)
 - Optional direct insert: `--insert --db-url ...`
+- Config-file driven runs (`--config`) with JSON/TOML/YAML
+- Optional generation report output (`--report-path`)
 
 ---
 
@@ -53,10 +57,12 @@ After install, both are available:
 
 ## Quick start
 
-### 1) Generate PostgreSQL INSERT SQL from DDL
+### 1) Generate SQL from DDL (postgres/mysql/sqlite)
 
 ```bash
 datagen --ddl schema.sql --rows 100 --out postgres
+datagen --ddl schema.sql --rows 100 --out mysql
+datagen --ddl schema.sql --rows 100 --out sqlite
 ```
 
 ### 2) Generate JSON from DDL
@@ -96,6 +102,31 @@ datagen \
   --rows 1000 \
   --insert \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb
+```
+
+### 7) Run from config file (JSON/TOML/YAML)
+
+```bash
+datagen --config datagen.toml
+```
+
+Example `datagen.toml`:
+
+```toml
+ddl = "schema.sql"
+rows = 500
+out = "postgres"
+seed = 42
+dist = [
+  "users.age:normal,mean=33,std=7",
+  "orders.amount:pareto,alpha=1.7,xm=1",
+]
+```
+
+### 8) Write generation report
+
+```bash
+datagen --ddl schema.sql --rows 500 --report-path report.json --out json --output-path data.json
 ```
 
 ---
@@ -154,24 +185,28 @@ This seeds Python random + Faker for stable reruns.
 
 ```bash
 datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
+        [--config config.toml]
         --rows 100
-        [--out postgres|json|csv]
+        [--out postgres|mysql|sqlite|json|csv]
         [--output-path PATH]
         [--insert --db-url URL]
         [--dist ...] [--dist ...]
         [--seed INT]
+        [--report-path report.json]
 ```
 
+- `--config`: load defaults from JSON/TOML/YAML config file
 - `--ddl`: input DDL file
 - `--schema-from-db`: introspect table schema from DB
 - `--tables`: optional comma-separated table filter for DB introspection mode
 - `--rows` (required): rows generated **per table**
 - `--out`: output format (default: `postgres`)
-- `--output-path`: output file path (`json`/`postgres`) or directory (`csv`)
+- `--output-path`: output file path (`json`/`sql`) or directory (`csv`)
 - `--db-url`: DB connection URL
 - `--insert`: insert generated rows into `--db-url`
 - `--dist`: distribution override(s)
 - `--seed`: deterministic run seed
+- `--report-path`: write a JSON profile report (rows/null-ratio/top-values)
 
 ---
 
