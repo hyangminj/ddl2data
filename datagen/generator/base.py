@@ -77,10 +77,14 @@ def _string_field_key(col: ColumnMeta) -> str | None:
 
 
 def _truncate_string(col: ColumnMeta, value: str) -> str:
+    if col.max_length is not None and col.max_length <= 0:
+        return ""
     return value[: col.max_length] if col.max_length else value
 
 
 def _stretch_string_to_limit(col: ColumnMeta, value: str, fill: str) -> str:
+    if col.max_length is not None and col.max_length <= 0:
+        return ""
     if col.max_length is None or len(value) >= col.max_length:
         return _truncate_string(col, value)
     return f"{value}{fill * (col.max_length - len(value))}"
@@ -88,6 +92,8 @@ def _stretch_string_to_limit(col: ColumnMeta, value: str, fill: str) -> str:
 
 def _fit_suffix(col: ColumnMeta, value: str, suffix: str, sep: str = " ") -> str:
     full_suffix = f"{sep}{suffix}" if suffix else ""
+    if col.max_length is not None and col.max_length <= 0:
+        return ""
     if col.max_length is None:
         return f"{value}{full_suffix}"
     if len(full_suffix) >= col.max_length:
@@ -97,10 +103,12 @@ def _fit_suffix(col: ColumnMeta, value: str, suffix: str, sep: str = " ") -> str
 
 def _fit_prefix(col: ColumnMeta, prefix: str, value: str, sep: str = " ") -> str:
     full_prefix = f"{prefix}{sep}" if prefix else ""
+    if col.max_length is not None and col.max_length <= 0:
+        return ""
     if col.max_length is None:
         return f"{full_prefix}{value}"
     if len(full_prefix) >= col.max_length:
-        return full_prefix[: col.max_length]
+        return prefix[-col.max_length :]
     return f"{full_prefix}{value[: col.max_length - len(full_prefix)]}"
 
 
@@ -157,21 +165,21 @@ def _structured_string_value(col: ColumnMeta, unique_token: int | None = None, e
 
     if field_key == "ipv4":
         if unique_token is not None:
-            return _truncate_string(col, _ipv4_unique_value(198, 18, unique_token))
+            return _fit_suffix(col, "", _ipv4_unique_value(198, 18, unique_token), sep="")
         if edge:
             return _truncate_string(col, "255.255.255.255")
         return _truncate_string(col, fake.ipv4())
 
     if field_key == "ipv6":
         if unique_token is not None:
-            return _truncate_string(col, f"2001:db8::{unique_token:x}")
+            return _fit_suffix(col, "", f"2001:db8::{unique_token:x}", sep="")
         if edge:
             return _truncate_string(col, "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
         return _truncate_string(col, fake.ipv6())
 
     if field_key == "ip":
         if unique_token is not None:
-            return _truncate_string(col, _ipv4_unique_value(198, 19, unique_token))
+            return _fit_suffix(col, "", _ipv4_unique_value(198, 19, unique_token), sep="")
         if edge:
             return _truncate_string(col, "255.255.255.255")
         return _truncate_string(col, fake.ipv4())

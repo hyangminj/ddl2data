@@ -15,6 +15,7 @@ from datagen.writer.csv_writer import write_csv
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
 from datagen.writer.parquet_writer import write_parquet
+from datagen.config import ColumnMeta
 
 
 def test_parse_ddl_captures_unique_and_check_constraints():
@@ -198,6 +199,39 @@ def test_edge_structured_values_stretch_to_column_length(monkeypatch: pytest.Mon
     assert len(row["city"]) == 10
     assert len(row["contact_email"]) == 16
     assert re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", row["contact_email"])
+
+
+def test_fit_helpers_preserve_unique_suffixes_and_zero_length_behavior():
+    short_col = ColumnMeta(name="country", type_name="VARCHAR", max_length=2)
+    zero_col = ColumnMeta(name="country", type_name="VARCHAR", max_length=0)
+
+    assert generator_base._fit_prefix(short_col, "100", "Korea") == "00"
+    assert generator_base._fit_prefix(short_col, "101", "Korea") == "01"
+    assert generator_base._fit_suffix(zero_col, "", "abcdef", sep="") == ""
+    assert generator_base._truncate_string(zero_col, "abcdef") == ""
+
+
+def test_unique_ip_variants_keep_distinct_suffixes_when_truncated():
+    ipv4_col = ColumnMeta(name="ipv4_address", type_name="VARCHAR", max_length=7)
+    ip_col = ColumnMeta(name="ip_address", type_name="VARCHAR", max_length=7)
+    ipv6_col = ColumnMeta(name="ipv6_address", type_name="VARCHAR", max_length=8)
+
+    ipv4_a = generator_base._structured_string_value(ipv4_col, unique_token=1)
+    ipv4_b = generator_base._structured_string_value(ipv4_col, unique_token=257)
+    ip_a = generator_base._structured_string_value(ip_col, unique_token=1)
+    ip_b = generator_base._structured_string_value(ip_col, unique_token=257)
+    ipv6_a = generator_base._structured_string_value(ipv6_col, unique_token=16)
+    ipv6_b = generator_base._structured_string_value(ipv6_col, unique_token=17)
+
+    assert ipv4_a != ipv4_b
+    assert ip_a != ip_b
+    assert ipv6_a != ipv6_b
+    assert len(ipv4_a or "") <= 7
+    assert len(ipv4_b or "") <= 7
+    assert len(ip_a or "") <= 7
+    assert len(ip_b or "") <= 7
+    assert len(ipv6_a or "") <= 8
+    assert len(ipv6_b or "") <= 8
 
 
 def test_validation_detects_non_null_fk_and_unique_collisions():
