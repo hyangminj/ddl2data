@@ -130,7 +130,7 @@ def _structured_string_value(col: ColumnMeta, unique_token: int | None = None) -
 
     if field_key == "ip":
         if unique_token is not None:
-            return _truncate_string(col, f"203.0.113.{(unique_token % 254) + 1}")
+            return _truncate_string(col, f"203.0.{(unique_token >> 8) % 256}.{unique_token % 256}")
         return _truncate_string(col, fake.ipv4())
 
     if field_key == "phone":
