@@ -150,24 +150,6 @@ def build_parser() -> argparse.ArgumentParser:
 def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
     cfg = load_config(args.config)
 
-    defaults: dict[str, Any] = {
-        "out": "postgres",
-        "dist": [],
-        "schema_from_db": False,
-        "schema_from_dynamodb": False,
-        "insert": False,
-        "engine": "python",
-        "table_rows": [],
-        "dynamodb_extra_attr": [],
-        "bq_insert_all": False,
-        "parquet_compression": "snappy",
-        "strict_checks": False,
-    }
-
-    for k, v in defaults.items():
-        if getattr(args, k) is None:
-            setattr(args, k, v)
-
     # config as base
     for key in [
         "ddl",
@@ -191,6 +173,24 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         if getattr(args, key) is None:
             if key in cfg:
                 setattr(args, key, cfg[key])
+
+    defaults: dict[str, Any] = {
+        "out": "postgres",
+        "dist": [],
+        "schema_from_db": False,
+        "schema_from_dynamodb": False,
+        "insert": False,
+        "engine": "python",
+        "table_rows": [],
+        "dynamodb_extra_attr": [],
+        "bq_insert_all": False,
+        "parquet_compression": "snappy",
+        "strict_checks": False,
+    }
+
+    for k, v in defaults.items():
+        if getattr(args, k) is None:
+            setattr(args, k, v)
 
     # dist handling (CLI wins)
     cfg_dist = cfg.get("dist", []) if isinstance(cfg, dict) else []

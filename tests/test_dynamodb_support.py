@@ -117,6 +117,40 @@ def test_main_supports_dynamodb_schema_and_json_output(tmp_path, monkeypatch: py
     assert "active" in lines[0]["Item"]
 
 
+def test_main_supports_dynamodb_config_input(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    def fake_load_schema_from_dynamodb(table_name: str, *, region_name=None, extra_attrs=None):
+        assert table_name == "users"
+        assert region_name == "ap-northeast-2"
+        assert extra_attrs is not None and len(extra_attrs) == 2
+        return load_schema_from_dynamodb("users", client=FakeDynamoDBClient(), extra_attrs=extra_attrs)
+
+    config_path = tmp_path / "ddb.json"
+    output_path = tmp_path / "users.ddb.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_from_dynamodb": True,
+                "dynamodb_table": "users",
+                "dynamodb_region": "ap-northeast-2",
+                "dynamodb_extra_attr": ["email:string", "active:boolean"],
+                "rows": 1,
+                "out": "dynamodb-json",
+                "output_path": str(output_path),
+                "seed": 11,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("datagen.cli.load_schema_from_dynamodb", fake_load_schema_from_dynamodb)
+    monkeypatch.setattr("sys.argv", ["datagen", "--config", str(config_path)])
+
+    main()
+    lines = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+
+    assert len(lines) == 1
+    assert lines[0]["Item"]["pk"]["S"]
+
+
 def test_parse_dynamodb_extra_attrs_rejects_invalid_tokens():
     with pytest.raises(ValueError, match="Invalid --dynamodb-extra-attr token 'broken'"):
         parse_dynamodb_extra_attrs(["broken"])
