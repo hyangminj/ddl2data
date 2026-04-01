@@ -45,6 +45,8 @@ def _kind(type_name: str) -> str:
         if k in t:
             return v
     return "str"
+
+
 def _string_field_key(col: ColumnMeta) -> str | None:
     name = col.name.lower()
     if "email" in name or name == "mail":
@@ -78,6 +80,37 @@ def _truncate_string(col: ColumnMeta, value: str) -> str:
     return value[: col.max_length] if col.max_length else value
 
 
+def _stretch_string_to_limit(col: ColumnMeta, value: str, fill: str) -> str:
+    if col.max_length is None or len(value) >= col.max_length:
+        return _truncate_string(col, value)
+    return f"{value}{fill * (col.max_length - len(value))}"
+
+
+def _fit_suffix(col: ColumnMeta, value: str, suffix: str, sep: str = " ") -> str:
+    full_suffix = f"{sep}{suffix}" if suffix else ""
+    if col.max_length is None:
+        return f"{value}{full_suffix}"
+    if len(full_suffix) >= col.max_length:
+        return full_suffix[-col.max_length :]
+    return f"{value[: col.max_length - len(full_suffix)]}{full_suffix}"
+
+
+def _fit_prefix(col: ColumnMeta, prefix: str, value: str, sep: str = " ") -> str:
+    full_prefix = f"{prefix}{sep}" if prefix else ""
+    if col.max_length is None:
+        return f"{full_prefix}{value}"
+    if len(full_prefix) >= col.max_length:
+        return full_prefix[: col.max_length]
+    return f"{full_prefix}{value[: col.max_length - len(full_prefix)]}"
+
+
+def _ipv4_unique_value(first: int, second: int, unique_token: int) -> str:
+    token = max(unique_token, 0)
+    third = (token >> 8) & 255
+    fourth = token & 255
+    return f"{first}.{second}.{third}.{fourth}"
+
+
 def _email_domain(max_length: int | None) -> str:
     for domain in EMAIL_DOMAIN_CANDIDATES:
         if max_length is None or max_length >= len(domain) + 2:
@@ -99,12 +132,14 @@ def _email_value(col: ColumnMeta, local_part: str) -> str:
     return f"{trimmed_local}@{domain}"
 
 
-def _structured_string_value(col: ColumnMeta, unique_token: int | None = None) -> str | None:
+def _structured_string_value(col: ColumnMeta, unique_token: int | None = None, edge: bool = False) -> str | None:
     field_key = _string_field_key(col)
     if field_key is None:
         return None
 
     if field_key == "email":
+        if edge:
+            return _email_value(col, f"{col.name}.edge.boundary.value.xxxxxxxxxxxx")
         local_part = (
             f"{fake.user_name()}.{unique_token}"
             if unique_token is not None
@@ -113,46 +148,89 @@ def _structured_string_value(col: ColumnMeta, unique_token: int | None = None) -
         return _email_value(col, local_part)
 
     if field_key == "username":
-        raw = fake.user_name()
+        raw = "user.edge.boundary" if edge else fake.user_name()
         if unique_token is not None:
-            raw = f"{raw}.{unique_token}"
+            return _fit_suffix(col, raw, str(unique_token), sep=".")
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
         return _truncate_string(col, raw)
 
     if field_key == "ipv4":
         if unique_token is not None:
-            return _truncate_string(col, f"198.51.{(unique_token >> 8) % 256}.{unique_token % 256}")
+            return _truncate_string(col, _ipv4_unique_value(198, 18, unique_token))
+        if edge:
+            return _truncate_string(col, "255.255.255.255")
         return _truncate_string(col, fake.ipv4())
 
     if field_key == "ipv6":
         if unique_token is not None:
             return _truncate_string(col, f"2001:db8::{unique_token:x}")
+        if edge:
+            return _truncate_string(col, "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff")
         return _truncate_string(col, fake.ipv6())
 
     if field_key == "ip":
         if unique_token is not None:
-            return _truncate_string(col, f"203.0.{(unique_token >> 8) % 256}.{unique_token % 256}")
+            return _truncate_string(col, _ipv4_unique_value(198, 19, unique_token))
+        if edge:
+            return _truncate_string(col, "255.255.255.255")
         return _truncate_string(col, fake.ipv4())
 
     if field_key == "phone":
-        return _truncate_string(col, fake.phone_number().replace("\n", " "))
+        raw = "555-0100 ext 999999" if edge else fake.phone_number().replace("\n", " ")
+        if unique_token is not None:
+            return _fit_suffix(col, raw, str(unique_token), sep=" x")
+        if edge:
+            return _stretch_string_to_limit(col, raw, "9")
+        return _truncate_string(col, raw)
 
     if field_key == "street_address":
-        return _truncate_string(col, fake.street_address().replace("\n", ", "))
+        raw = "9999 Edge Boundary Street" if edge else fake.street_address().replace("\n", ", ")
+        if unique_token is not None:
+            return _fit_prefix(col, str(unique_token), raw)
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
+        return _truncate_string(col, raw)
 
     if field_key == "address":
-        return _truncate_string(col, fake.address().replace("\n", ", "))
+        raw = "9999 Edge Boundary Ave, Suite 999" if edge else fake.address().replace("\n", ", ")
+        if unique_token is not None:
+            return _fit_prefix(col, str(unique_token), raw)
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
+        return _truncate_string(col, raw)
 
     if field_key == "city":
-        return _truncate_string(col, fake.city())
+        raw = "EdgeCityBoundary" if edge else fake.city()
+        if unique_token is not None:
+            return _fit_suffix(col, raw, str(unique_token))
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
+        return _truncate_string(col, raw)
 
     if field_key == "state":
-        return _truncate_string(col, fake.state())
+        raw = "EdgeStateBoundary" if edge else fake.state()
+        if unique_token is not None:
+            return _fit_suffix(col, raw, str(unique_token))
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
+        return _truncate_string(col, raw)
 
     if field_key == "postal_code":
-        return _truncate_string(col, fake.postcode())
+        raw = "99999-9999" if edge else fake.postcode()
+        if unique_token is not None:
+            return _fit_suffix(col, raw, str(unique_token), sep="-")
+        if edge:
+            return _stretch_string_to_limit(col, raw, "0")
+        return _truncate_string(col, raw)
 
     if field_key == "country":
-        return _truncate_string(col, fake.country())
+        raw = "EdgeCountryBoundary" if edge else fake.country()
+        if unique_token is not None:
+            return _fit_suffix(col, raw, str(unique_token))
+        if edge:
+            return _stretch_string_to_limit(col, raw, "x")
+        return _truncate_string(col, raw)
 
     return None
 
@@ -160,7 +238,7 @@ def _structured_string_value(col: ColumnMeta, unique_token: int | None = None) -
 def _edge_value(col: ColumnMeta) -> Any:
     k = _kind(col.type_name)
     if k == "str":
-        structured = _structured_string_value(col)
+        structured = _structured_string_value(col, edge=True)
         if structured is not None:
             return structured
         base = "edge_!@#$%^&*()_+|"

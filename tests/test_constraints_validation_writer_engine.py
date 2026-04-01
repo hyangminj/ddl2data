@@ -141,15 +141,63 @@ def test_named_string_columns_use_field_aware_generation(monkeypatch: pytest.Mon
     data = generate_all(tables, order, rows=2, dist_overrides={})
 
     for row in data["contacts"]:
-        assert row["username"] == "demo.user"
+        assert row["username"].startswith("demo.user") or row["username"].startswith("user.edge")
         assert ipaddress.ip_address(row["ip_address"])
-        assert row["street_address"] == "123 Test St"
-        assert row["home_address"] == "500 Test Ave, Suite 9"
-        assert row["city"] == "Seoul"
-        assert row["state"] == "Seoul Special City"
-        assert row["postal_code"] == "04524"
-        assert row["country"] == "Korea"
-        assert row["phone_number"] == "+82-2-555-0100"
+        assert row["street_address"].startswith("123 Test St") or row["street_address"].startswith("9999 Edge")
+        assert row["home_address"].startswith("500 Test Ave, Suite 9") or row["home_address"].startswith("9999 Edge")
+        assert row["city"].startswith("Seoul") or row["city"].startswith("EdgeCity")
+        assert row["state"].startswith("Seoul Special City") or row["state"].startswith("EdgeState")
+        assert row["postal_code"].startswith("04524") or row["postal_code"].startswith("99999")
+        assert row["country"].startswith("Korea") or row["country"].startswith("EdgeCountry")
+        assert row["phone_number"].startswith("+82-2-555-0100") or row["phone_number"].startswith("555-0100")
+
+
+def test_unique_named_string_columns_use_unique_tokens(monkeypatch: pytest.MonkeyPatch):
+    ddl = """
+    CREATE TABLE contacts (
+      id INT PRIMARY KEY,
+      ip_address VARCHAR(15) UNIQUE NOT NULL,
+      country VARCHAR(8) UNIQUE NOT NULL
+    );
+    """
+
+    monkeypatch.setattr(generator_base.fake, "ipv4", lambda: "203.0.113.10")
+    monkeypatch.setattr(generator_base.fake, "country", lambda: "Korea")
+
+    tables = parse_ddl_text(ddl)
+    order = generation_order(tables)
+    data = generate_all(tables, order, rows=300, dist_overrides={})
+
+    ips = [row["ip_address"] for row in data["contacts"]]
+    countries = [row["country"] for row in data["contacts"]]
+
+    assert len(set(ips)) == len(ips)
+    assert len(set(countries)) == len(countries)
+    assert all(len(value) <= 15 for value in ips)
+    assert all(len(value) <= 8 for value in countries)
+
+
+def test_edge_structured_values_stretch_to_column_length(monkeypatch: pytest.MonkeyPatch):
+    ddl = """
+    CREATE TABLE contacts (
+      id INT PRIMARY KEY,
+      username VARCHAR(12) NOT NULL,
+      city VARCHAR(10) NOT NULL,
+      contact_email VARCHAR(16) NOT NULL
+    );
+    """
+
+    monkeypatch.setattr(generator_base.fake, "user_name", lambda: "demo")
+    monkeypatch.setattr(generator_base.fake, "city", lambda: "Seoul")
+
+    tables = parse_ddl_text(ddl)
+    order = generation_order(tables)
+    row = generate_all(tables, order, rows=1, dist_overrides={})["contacts"][0]
+
+    assert len(row["username"]) == 12
+    assert len(row["city"]) == 10
+    assert len(row["contact_email"]) == 16
+    assert re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", row["contact_email"])
 
 
 def test_validation_detects_non_null_fk_and_unique_collisions():
