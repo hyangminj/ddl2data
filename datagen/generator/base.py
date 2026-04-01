@@ -505,7 +505,11 @@ def _generate_table_rows_python(
                 row[col.name] = _default_value(col)
 
         for col in table.columns:
-            if col.primary_key and row.get(col.name) is None and _kind(col.type_name) == "int":
+            if not col.primary_key or _kind(col.type_name) != "int":
+                continue
+
+            value = row.get(col.name)
+            if value is None or (make_edge and value == 0):
                 row[col.name] = i + 1
 
         for ck in table.check_constraints:

@@ -76,6 +76,24 @@ def test_unique_aware_generation_avoids_obvious_duplicates():
     assert all(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) for email in emails)
 
 
+def test_integer_primary_keys_do_not_use_zero_edge_values():
+    ddl = """
+    CREATE TABLE users (
+      id INT PRIMARY KEY,
+      age INT NOT NULL
+    );
+    """
+    tables = parse_ddl_text(ddl)
+    order = generation_order(tables)
+    data = generate_all(tables, order, rows=25, dist_overrides={})
+    ids = [r["id"] for r in data["users"]]
+
+    assert ids[0] == 1
+    assert ids[20] == 21
+    assert all(i > 0 for i in ids)
+    assert len(set(ids)) == len(ids)
+
+
 def test_email_generation_respects_format_and_length():
     ddl = """
     CREATE TABLE users (
