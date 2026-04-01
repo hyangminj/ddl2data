@@ -415,6 +415,18 @@ Flag summary:
 
 ---
 
+## Future work
+
+- **DynamoDB support**: generate test data for NoSQL schemas with partition key and sort key awareness
+- **More distribution types**: power law and additional statistical distributions for more realistic data modeling
+- **Pipeline edge-case generation**:
+  - hot-spot / data skew: concentrate data on specific partition keys to test skew handling
+  - timestamp edge cases: midnight boundaries, timezone transitions, leap seconds
+  - NULL and empty-value patterns that commonly break pipelines
+  - bulk duplicates for deduplication logic testing
+
+---
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE).

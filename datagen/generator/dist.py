@@ -3,27 +3,74 @@ from __future__ import annotations
 import math
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from datagen.config import DistSpec
 
+SUPPORTED_DISTRIBUTIONS = {
+    "normal",
+    "poisson",
+    "weighted",
+    "exponential",
+    "pareto",
+    "zipf",
+    "peak",
+}
+
 
 def parse_dist_arg(arg: str) -> tuple[str, DistSpec]:
+    token = arg.strip()
+    if ":" not in token:
+        raise ValueError(f"Invalid --dist token '{arg}'. Use column:kind,param=value")
+
     # col:normal,mean=10,std=2
-    col, spec = arg.split(":", 1)
+    col, spec = token.split(":", 1)
+    col = col.strip()
+    spec = spec.strip()
+    if not col or not spec:
+        raise ValueError(f"Invalid --dist token '{arg}'. Use column:kind,param=value")
+
     parts = [p.strip() for p in spec.split(",") if p.strip()]
+    if not parts:
+        raise ValueError(f"Invalid --dist token '{arg}'. Use column:kind,param=value")
+
     kind = parts[0].lower()
-    params: dict[str, Any] = {}
-    for p in parts[1:]:
-        if "=" in p:
-            k, v = p.split("=", 1)
-            params[k.strip().lower()] = _parse_value(v.strip())
+    if kind not in SUPPORTED_DISTRIBUTIONS:
+        supported = ", ".join(sorted(SUPPORTED_DISTRIBUTIONS))
+        raise ValueError(f"Unsupported distribution kind '{kind}' in --dist token '{arg}'. Use one of: {supported}")
 
+    params = _parse_params(kind, parts[1:], arg)
+
+    return col, DistSpec(kind=kind, params=params)
+
+
+def _parse_params(kind: str, param_parts: list[str], raw_arg: str) -> dict[str, Any]:
     if kind == "weighted":
-        params = _parse_weighted(spec[len("weighted") :].lstrip(","))
+        params = _parse_weighted(",".join(param_parts))
+        if not params:
+            raise ValueError(
+                f"Weighted distribution in --dist token '{raw_arg}' requires at least one value=weight pair"
+            )
+        return params
 
-    return col.strip(), DistSpec(kind=kind, params=params)
+    params: dict[str, Any] = {}
+    last_key: str | None = None
+    for part in param_parts:
+        if "=" in part:
+            k, v = part.split("=", 1)
+            key = k.strip().lower()
+            value = v.strip()
+            if not key or not value:
+                raise ValueError(f"Invalid parameter '{part}' in --dist token '{raw_arg}'. Use key=value")
+            params[key] = _parse_value(value)
+            last_key = key
+            continue
+        if kind == "peak" and last_key == "hours":
+            params["hours"] = f"{params['hours']},{part}"
+            continue
+        raise ValueError(f"Invalid parameter '{part}' in --dist token '{raw_arg}'. Use key=value")
+    return params
 
 
 def _parse_value(v: str) -> Any:
@@ -91,7 +138,7 @@ def _sample_peak_time(hours_spec: str, date_from: datetime | None = None) -> str
         start, end = random.choices(ranges, weights=span_weights, k=1)[0]
         hour = random.randint(start, end)
 
-    base = date_from or datetime.utcnow()
+    base = date_from or datetime.now(UTC).replace(tzinfo=None)
     dt = base.replace(hour=hour, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
     # small random jitter day-wise for variety
     dt += timedelta(days=random.randint(-7, 7))

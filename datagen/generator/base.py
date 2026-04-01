@@ -11,6 +11,8 @@ from datagen.generator.dist import sample_with_dist
 
 fake = Faker()
 
+EMAIL_DOMAIN_CANDIDATES = ("example.test", "example.com", "x.io", "b.co")
+
 
 TYPE_MAP = {
     "int": "int",
@@ -43,11 +45,124 @@ def _kind(type_name: str) -> str:
         if k in t:
             return v
     return "str"
+def _string_field_key(col: ColumnMeta) -> str | None:
+    name = col.name.lower()
+    if "email" in name or name == "mail":
+        return "email"
+    if "ipv4" in name:
+        return "ipv4"
+    if "ipv6" in name:
+        return "ipv6"
+    if name == "ip" or name.startswith("ip_") or name.endswith("_ip") or "ip_address" in name:
+        return "ip"
+    if "username" in name or "user_name" in name:
+        return "username"
+    if "phone" in name or "mobile" in name or "msisdn" in name:
+        return "phone"
+    if "street" in name:
+        return "street_address"
+    if "address" in name:
+        return "address"
+    if "postal" in name or name == "zip" or "zip_code" in name or "zipcode" in name:
+        return "postal_code"
+    if "city" in name:
+        return "city"
+    if "state" in name or "province" in name or "region" in name:
+        return "state"
+    if "country" in name:
+        return "country"
+    return None
+
+
+def _truncate_string(col: ColumnMeta, value: str) -> str:
+    return value[: col.max_length] if col.max_length else value
+
+
+def _email_domain(max_length: int | None) -> str:
+    for domain in EMAIL_DOMAIN_CANDIDATES:
+        if max_length is None or max_length >= len(domain) + 2:
+            return domain
+    return EMAIL_DOMAIN_CANDIDATES[-1]
+
+
+def _email_value(col: ColumnMeta, local_part: str) -> str:
+    domain = _email_domain(col.max_length)
+    local = re.sub(r"[^a-z0-9._+-]+", "", local_part.lower()) or "user"
+    if col.max_length is None:
+        return f"{local}@{domain}"
+
+    max_local_length = col.max_length - len(domain) - 1
+    if max_local_length < 1:
+        return f"u@{domain}"[: col.max_length]
+
+    trimmed_local = local[:max_local_length].rstrip("._+-") or "u"
+    return f"{trimmed_local}@{domain}"
+
+
+def _structured_string_value(col: ColumnMeta, unique_token: int | None = None) -> str | None:
+    field_key = _string_field_key(col)
+    if field_key is None:
+        return None
+
+    if field_key == "email":
+        local_part = (
+            f"{fake.user_name()}.{unique_token}"
+            if unique_token is not None
+            else f"{fake.user_name()}.{random.randint(1, 9999)}"
+        )
+        return _email_value(col, local_part)
+
+    if field_key == "username":
+        raw = fake.user_name()
+        if unique_token is not None:
+            raw = f"{raw}.{unique_token}"
+        return _truncate_string(col, raw)
+
+    if field_key == "ipv4":
+        if unique_token is not None:
+            return _truncate_string(col, f"198.51.{(unique_token >> 8) % 256}.{unique_token % 256}")
+        return _truncate_string(col, fake.ipv4())
+
+    if field_key == "ipv6":
+        if unique_token is not None:
+            return _truncate_string(col, f"2001:db8::{unique_token:x}")
+        return _truncate_string(col, fake.ipv6())
+
+    if field_key == "ip":
+        if unique_token is not None:
+            return _truncate_string(col, f"203.0.{(unique_token >> 8) % 256}.{unique_token % 256}")
+        return _truncate_string(col, fake.ipv4())
+
+    if field_key == "phone":
+        return _truncate_string(col, fake.phone_number().replace("\n", " "))
+
+    if field_key == "street_address":
+        return _truncate_string(col, fake.street_address().replace("\n", ", "))
+
+    if field_key == "address":
+        return _truncate_string(col, fake.address().replace("\n", ", "))
+
+    if field_key == "city":
+        return _truncate_string(col, fake.city())
+
+    if field_key == "state":
+        return _truncate_string(col, fake.state())
+
+    if field_key == "postal_code":
+        return _truncate_string(col, fake.postcode())
+
+    if field_key == "country":
+        return _truncate_string(col, fake.country())
+
+    return None
 
 
 def _edge_value(col: ColumnMeta) -> Any:
     k = _kind(col.type_name)
     if k == "str":
+        structured = _structured_string_value(col)
+        if structured is not None:
+            return structured
         base = "edge_!@#$%^&*()_+|"
         if col.max_length:
             return (base * ((col.max_length // len(base)) + 1))[: col.max_length]
@@ -80,6 +195,9 @@ def _default_value(col: ColumnMeta) -> Any:
     if k == "uuid":
         return str(fake.uuid4())
     if k == "str":
+        structured = _structured_string_value(col)
+        if structured is not None:
+            return structured
         max_chars = min(col.max_length or 40, 120)
         if max_chars < 5:
             val = fake.lexify(text="?" * max_chars) if max_chars > 0 else ""
@@ -342,6 +460,9 @@ def _make_unique_candidate(col: ColumnMeta, i: int, attempt: int) -> Any:
     if k == "uuid":
         return str(fake.uuid4())
     if k == "str":
+        structured = _structured_string_value(col, unique_token=base)
+        if structured is not None:
+            return structured
         raw = f"{col.name}_{base}_{random.randint(1, 9999)}"
         return raw[: col.max_length] if col.max_length else raw
     return _default_value(col)
@@ -384,7 +505,11 @@ def _generate_table_rows_python(
                 row[col.name] = _default_value(col)
 
         for col in table.columns:
-            if col.primary_key and row.get(col.name) is None and _kind(col.type_name) == "int":
+            if not col.primary_key or _kind(col.type_name) != "int":
+                continue
+
+            value = row.get(col.name)
+            if value is None or (make_edge and value == 0):
                 row[col.name] = i + 1
 
         for ck in table.check_constraints:

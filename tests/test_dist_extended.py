@@ -1,3 +1,5 @@
+import pytest
+
 from datagen.config import DistSpec
 from datagen.generator.dist import parse_dist_arg, sample_with_dist
 
@@ -43,3 +45,23 @@ def test_weighted_still_works():
     spec = DistSpec(kind="weighted", params={"A": 0.7, "B": 0.3})
     value = sample_with_dist(spec)
     assert value in {"A", "B"}
+
+
+def test_parse_peak_preserves_multiple_hour_ranges():
+    _, spec = parse_dist_arg("created_at:peak,hours=9-11,18-20")
+    assert spec.params["hours"] == "9-11,18-20"
+
+
+def test_parse_dist_arg_rejects_missing_colon():
+    with pytest.raises(ValueError, match="Invalid --dist token 'broken'"):
+        parse_dist_arg("broken")
+
+
+def test_parse_dist_arg_rejects_unknown_kind():
+    with pytest.raises(ValueError, match="Unsupported distribution kind 'mystery'"):
+        parse_dist_arg("age:mystery,mean=5")
+
+
+def test_parse_dist_arg_rejects_empty_weighted_values():
+    with pytest.raises(ValueError, match="requires at least one value=weight pair"):
+        parse_dist_arg("tier:weighted")

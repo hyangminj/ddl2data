@@ -8,6 +8,7 @@ from typing import Any
 from faker import Faker
 from sqlalchemy import MetaData, Table, create_engine
 
+from datagen.config import DistSpec
 from datagen.config_loader import load_config
 from datagen.generator.base import generate_all
 from datagen.generator.dist import parse_dist_arg
@@ -22,7 +23,7 @@ from datagen.writer.postgres import render_insert_sql
 from datagen.writer.parquet_writer import write_parquet
 
 
-def _insert_via_sqlalchemy(db_url: str, data: dict[str, list[dict]]) -> None:
+def _insert_via_sqlalchemy(db_url: str, data: dict[str, list[dict[str, Any]]]) -> None:
     engine = create_engine(db_url)
     meta = MetaData()
     with engine.begin() as conn:
@@ -55,6 +56,8 @@ def _parse_table_rows_map(raw_entries: list[str] | None) -> dict[str, int]:
                 raise SystemExit(f"Invalid --table-rows token '{token}'. Use table=count")
             table, count_raw = token.split("=", 1)
             table = table.strip()
+            if not table:
+                raise SystemExit(f"Invalid --table-rows token '{token}'. Table name cannot be empty")
             try:
                 count = int(count_raw.strip())
             except ValueError as e:
@@ -62,6 +65,17 @@ def _parse_table_rows_map(raw_entries: list[str] | None) -> dict[str, int]:
             if count < 0:
                 raise SystemExit(f"Row count must be >=0 in --table-rows token '{token}'")
             out[table] = count
+    return out
+
+
+def _parse_dist_map(raw_entries: list[str] | None) -> dict[str, DistSpec]:
+    out: dict[str, DistSpec] = {}
+    for entry in raw_entries or []:
+        try:
+            key, spec = parse_dist_arg(entry)
+        except ValueError as e:
+            raise SystemExit(str(e)) from e
+        out[key] = spec
     return out
 
 
@@ -170,6 +184,8 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
 
     if args.rows is None:
         args.rows = 0
+    elif args.rows < 0:
+        raise SystemExit("--rows must be >= 0")
 
     if args.out is None:
         args.out = "postgres"
@@ -187,7 +203,7 @@ def main() -> None:
 
     tables = _resolve_tables_from_args(args)
     order = generation_order(tables)
-    dist_map = dict(parse_dist_arg(d) for d in (args.dist or []))
+    dist_map = _parse_dist_map(args.dist)
     table_rows_map = _parse_table_rows_map(args.table_rows)
     data = generate_all(
         tables,
