@@ -12,12 +12,14 @@ from datagen.config import DistSpec
 from datagen.config_loader import load_config
 from datagen.generator.base import generate_all
 from datagen.generator.dist import parse_dist_arg
+from datagen.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
 from datagen.parser.ddl import parse_ddl_file
 from datagen.parser.graph import generation_order
 from datagen.parser.introspect import load_schema_from_db
 from datagen.report import build_report
 from datagen.validation import validate_check_constraints, validate_generated_data
 from datagen.writer.csv_writer import write_csv
+from datagen.writer.dynamodb_json_writer import write_dynamodb_json
 from datagen.writer.json_writer import write_json
 from datagen.writer.postgres import render_insert_sql
 from datagen.writer.parquet_writer import write_parquet
@@ -35,6 +37,22 @@ def _insert_via_sqlalchemy(db_url: str, data: dict[str, list[dict[str, Any]]]) -
 
 
 def _resolve_tables_from_args(args: argparse.Namespace):
+    if args.schema_from_db and args.schema_from_dynamodb:
+        raise SystemExit("Choose only one schema source: --schema-from-db or --schema-from-dynamodb")
+
+    if args.schema_from_dynamodb:
+        if not args.dynamodb_table:
+            raise SystemExit("--schema-from-dynamodb requires --dynamodb-table")
+        try:
+            extra_attrs = parse_dynamodb_extra_attrs(args.dynamodb_extra_attr)
+        except ValueError as e:
+            raise SystemExit(str(e)) from e
+        return load_schema_from_dynamodb(
+            args.dynamodb_table,
+            region_name=args.dynamodb_region,
+            extra_attrs=extra_attrs,
+        )
+
     if args.schema_from_db:
         if not args.db_url:
             raise SystemExit("--schema-from-db requires --db-url")
@@ -43,7 +61,7 @@ def _resolve_tables_from_args(args: argparse.Namespace):
         return load_schema_from_db(engine, table_names)
 
     if not args.ddl:
-        raise SystemExit("Provide either --ddl <schema.sql> or --schema-from-db")
+        raise SystemExit("Provide either --ddl <schema.sql>, --schema-from-db, or --schema-from-dynamodb")
 
     return parse_ddl_file(args.ddl)
 
@@ -88,6 +106,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ddl", help="Path to schema.sql")
     p.add_argument("--schema-from-db", action="store_true", default=None, help="Introspect tables from --db-url instead of using --ddl")
     p.add_argument("--tables", help="Comma-separated table names to include when using --schema-from-db")
+    p.add_argument("--schema-from-dynamodb", action="store_true", default=None, help="Load key/index schema from a live DynamoDB table")
+    p.add_argument("--dynamodb-table", help="DynamoDB table name for --schema-from-dynamodb")
+    p.add_argument("--dynamodb-region", help="AWS region for --schema-from-dynamodb")
+    p.add_argument(
+        "--dynamodb-extra-attr",
+        action="append",
+        default=None,
+        help="Additional DynamoDB non-key attribute, e.g. email:string (repeatable)",
+    )
 
     # Generation/output
     p.add_argument("--rows", type=int, help="Default rows per table")
@@ -97,7 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Per-table row count override, e.g. users=100,orders=200 (repeatable)",
     )
-    p.add_argument("--out", choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv", "parquet"], default=None)
+    p.add_argument(
+        "--out",
+        choices=["postgres", "mysql", "sqlite", "bigquery", "json", "csv", "parquet", "dynamodb-json"],
+        default=None,
+    )
     p.add_argument("--db-url", help="DB URL for schema introspection and/or direct insert")
     p.add_argument("--insert", action="store_true", default=None, help="Insert generated rows into --db-url")
     p.add_argument(
@@ -119,27 +150,14 @@ def build_parser() -> argparse.ArgumentParser:
 def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
     cfg = load_config(args.config)
 
-    defaults: dict[str, Any] = {
-        "out": "postgres",
-        "dist": [],
-        "schema_from_db": False,
-        "insert": False,
-        "engine": "python",
-        "table_rows": [],
-        "bq_insert_all": False,
-        "parquet_compression": "snappy",
-        "strict_checks": False,
-    }
-
-    for k, v in defaults.items():
-        if getattr(args, k) is None:
-            setattr(args, k, v)
-
     # config as base
     for key in [
         "ddl",
         "schema_from_db",
+        "schema_from_dynamodb",
         "tables",
+        "dynamodb_table",
+        "dynamodb_region",
         "rows",
         "out",
         "db_url",
@@ -156,6 +174,24 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
             if key in cfg:
                 setattr(args, key, cfg[key])
 
+    defaults: dict[str, Any] = {
+        "out": "postgres",
+        "dist": [],
+        "schema_from_db": False,
+        "schema_from_dynamodb": False,
+        "insert": False,
+        "engine": "python",
+        "table_rows": [],
+        "dynamodb_extra_attr": [],
+        "bq_insert_all": False,
+        "parquet_compression": "snappy",
+        "strict_checks": False,
+    }
+
+    for k, v in defaults.items():
+        if getattr(args, k) is None:
+            setattr(args, k, v)
+
     # dist handling (CLI wins)
     cfg_dist = cfg.get("dist", []) if isinstance(cfg, dict) else []
     if not isinstance(cfg_dist, list):
@@ -165,6 +201,17 @@ def _merge_config(args: argparse.Namespace) -> argparse.Namespace:
         args.dist = cli_dist
     else:
         args.dist = [str(x) for x in cfg_dist]
+
+    cfg_dynamodb_extra = cfg.get("dynamodb_extra_attr", []) if isinstance(cfg, dict) else []
+    if isinstance(cfg_dynamodb_extra, dict):
+        cfg_dynamodb_extra = [f"{k}:{v}" for k, v in cfg_dynamodb_extra.items()]
+    elif not isinstance(cfg_dynamodb_extra, list):
+        cfg_dynamodb_extra = []
+    cli_dynamodb_extra = args.dynamodb_extra_attr or []
+    if cli_dynamodb_extra:
+        args.dynamodb_extra_attr = cli_dynamodb_extra
+    else:
+        args.dynamodb_extra_attr = [str(x) for x in cfg_dynamodb_extra]
 
     # table-rows: CLI value or config map/list
     if args.table_rows:
@@ -249,6 +296,15 @@ def main() -> None:
         out_dir = args.output_path or "./output_parquet"
         files = write_parquet(data, out_dir, compression=args.parquet_compression)
         print("\n".join(files))
+        return
+
+    if args.out == "dynamodb-json":
+        payload = write_dynamodb_json(tables, data, args.output_path)
+        if isinstance(payload, list):
+            print("\n".join(payload))
+        else:
+            if not args.output_path:
+                print(payload)
         return
 
     dialect = args.out if args.out in {"postgres", "mysql", "sqlite", "bigquery"} else "postgres"

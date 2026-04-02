@@ -25,6 +25,7 @@ class ColumnMeta:
     primary_key: bool = False
     unique: bool = False
     max_length: int | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
