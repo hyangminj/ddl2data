@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loadforge"
-version = "0.2.0"
+version = "0.2.1"
 description = "Generate synthetic data from SQL DDL or live database schemas"
 readme = "README.md"
 license = "Apache-2.0"

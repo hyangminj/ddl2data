@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import random
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from datagen.config import DistSpec
@@ -138,7 +138,7 @@ def _sample_peak_time(hours_spec: str, date_from: datetime | None = None) -> str
         start, end = random.choices(ranges, weights=span_weights, k=1)[0]
         hour = random.randint(start, end)
 
-    base = date_from or datetime.now(UTC).replace(tzinfo=None)
+    base = date_from or datetime.now(timezone.utc).replace(tzinfo=None)
     dt = base.replace(hour=hour, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
     # small random jitter day-wise for variety
     dt += timedelta(days=random.randint(-7, 7))
