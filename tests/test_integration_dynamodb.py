@@ -2,13 +2,33 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import json
+import time
+from typing import Protocol
 
 import pytest
 
 from datagen.generator.base import generate_all
 from datagen.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
 from datagen.writer.dynamodb_json_writer import write_dynamodb_json
-from tests.conftest import DynamoDBTestClient, wait_for_dynamodb_table
+
+
+class DynamoDBTestClient(Protocol):
+    def create_table(self, **kwargs: object) -> object: ...
+
+    def describe_table(self, *, TableName: str) -> dict[str, dict[str, str]]: ...
+
+
+def wait_for_dynamodb_table(dynamodb_client: DynamoDBTestClient, table_name: str, *, timeout: float = 20.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            status = dynamodb_client.describe_table(TableName=table_name)["Table"]["TableStatus"]
+            if status == "ACTIVE":
+                return
+        except Exception:
+            pass
+        time.sleep(0.5)
+    raise AssertionError(f"DynamoDB table did not become ACTIVE: {table_name}")
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.dynamodb]
