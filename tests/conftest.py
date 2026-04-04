@@ -39,7 +39,7 @@ def pytest_configure(config: pytest.Config) -> None:
 def postgres_url() -> str:
     url = os.environ.get("TEST_POSTGRES_URL")
     if not url:
-        pytest.skip("TEST_POSTGRES_URL 없음 — PostgreSQL 통합 테스트 건너뜀")
+        pytest.skip("TEST_POSTGRES_URL missing — skipping PostgreSQL integration tests")
     return url
 
 
