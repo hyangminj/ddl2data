@@ -95,7 +95,6 @@ def test_dynamodb_loads_gsi_and_lsi_keys(
                 "IndexName": "gsi1",
                 "KeySchema": [{"AttributeName": "gsi1pk", "KeyType": "HASH"}],
                 "Projection": {"ProjectionType": "ALL"},
-                "BillingMode": "PAY_PER_REQUEST",
             }
         ],
         BillingMode="PAY_PER_REQUEST",
