@@ -1,0 +1,97 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[polars,test]"
+      - run: python -m pytest tests -v -m "not integration" --tb=short
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d testdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      localstack:
+        image: localstack/localstack:3
+        env:
+          SERVICES: dynamodb
+          AWS_DEFAULT_REGION: us-east-1
+        ports:
+          - 4566:4566
+        options: >-
+          --health-cmd "curl -f http://localhost:4566/_localstack/health"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[polars,test]"
+      - run: python -m pytest tests -v -m "integration and not bigquery" --tb=short
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg2://testuser:testpass@localhost:5432/testdb
+          DYNAMODB_ENDPOINT_URL: http://localhost:4566
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          AWS_DEFAULT_REGION: us-east-1
+
+  bigquery:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[polars,test]"
+      - run: python -m pytest tests/test_integration_bigquery.py -v --tb=short
+        env:
+          TEST_BQ_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          TEST_BQ_DATASET: datagen_ci_test
+
+      - name: BigQuery cleanup
+        if: always()
+        run: bq rm -r -f ${{ secrets.GCP_PROJECT_ID }}:datagen_ci_test || true

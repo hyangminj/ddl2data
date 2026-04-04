@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 import importlib
+import os
 from typing import Any, Protocol
 
 from datagen.config import ColumnMeta, TableMeta
@@ -42,7 +43,8 @@ def _get_dynamodb_client(region_name: str | None = None):
         raise RuntimeError(
             "DynamoDB schema loading requires boto3. Install with: pip install boto3"
         ) from e
-    return boto3.client("dynamodb", region_name=region_name)
+    endpoint_url = os.environ.get("DYNAMODB_ENDPOINT_URL")
+    return boto3.client("dynamodb", region_name=region_name, endpoint_url=endpoint_url)
 
 
 def _ddb_column(name: str, attr_type: str, *, generator_type: str, nullable: bool, primary_key: bool, source: str) -> ColumnMeta:
