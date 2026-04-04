@@ -42,9 +42,21 @@ Releases = "https://github.com/hyangminj/datagen/releases"
 polars = [
   "polars>=1.0.0",
 ]
+test = [
+  "pytest>=8.0.0",
+  "psycopg2-binary>=2.9",
+  "boto3>=1.34",
+  "google-cloud-bigquery>=3.0.0",
+]
 
 [project.scripts]
 datagen = "datagen.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "integration: requires external services or credentials",
+  "postgres: requires PostgreSQL test database",
+  "dynamodb: requires LocalStack DynamoDB test service",
+  "bigquery: requires real Google BigQuery project credentials",
+]
