@@ -1,14 +1,14 @@
 # loadforge
 
-Synthetic relational data generation for pipeline, staging, and service testing.
+Synthetic relational and DynamoDB-shaped data generation for pipelines, staging, and service testing.
 
 - PyPI package: `loadforge`
 - CLI command: `datagen`
 - Python module: `datagen`
 
-`loadforge` turns SQL DDL or a live database schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
+`loadforge` turns SQL DDL, a live relational schema, or a live DynamoDB table schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
 
-It parses tables and foreign keys, generates rows in parent-before-child order, applies type-aware defaults plus optional distributions, validates the generated data, and writes it out as SQL, JSON, CSV, or Parquet. It can also insert directly into a database through SQLAlchemy.
+For relational schemas it parses tables and foreign keys, generates rows in parent-before-child order, applies type-aware defaults plus optional distributions, validates the generated data, and writes it out as SQL, JSON, CSV, or Parquet. It can also insert generated rows directly into a relational database through SQLAlchemy. For DynamoDB it can load key and index metadata from a real table and emit typed DynamoDB JSON payloads.
 
 ---
 
@@ -18,10 +18,34 @@ Use `loadforge` when you need to:
 
 - stress a pipeline or service with large synthetic datasets
 - generate relational fixtures from existing DDL
-- seed staging or local environments while preserving FK order
+- seed staging or local environments while preserving foreign-key order
 - inspect a live schema and generate data without hand-writing metadata
-- export the same dataset shape in SQL, JSON, CSV, or Parquet
+- generate DynamoDB-shaped typed JSON from a real table definition
+- export the same dataset shape in SQL, JSON, CSV, Parquet, or DynamoDB JSON
 - produce validation reports before loading data elsewhere
+
+---
+
+## How it works
+
+```text
+Schema input
+  -> parse DDL, inspect a live relational DB, or inspect a DynamoDB table
+  -> build metadata and dependency order
+  -> generate rows with Faker and optional distributions
+  -> validate FK, null, unique, and optional CHECK constraints
+  -> write SQL/JSON/CSV/Parquet/DynamoDB JSON or insert into a DB
+```
+
+Core modules:
+
+- `datagen/parser/ddl.py`: SQL DDL parsing via `sqlglot`
+- `datagen/parser/introspect.py`: relational schema introspection via SQLAlchemy
+- `datagen/parser/dynamodb.py`: DynamoDB schema loading via `boto3`
+- `datagen/generator/base.py`: main row generation engine
+- `datagen/generator/dist.py`: distribution parsing and sampling
+- `datagen/writer/`: SQL, JSON, CSV, Parquet, and DynamoDB JSON writers
+- `datagen/validation.py` and `datagen/report.py`: validation and reporting
 
 ---
 
@@ -29,7 +53,8 @@ Use `loadforge` when you need to:
 
 - Input sources:
   - SQL DDL via `--ddl`
-  - live schema introspection via `--schema-from-db --db-url ...`
+  - live relational schema introspection via `--schema-from-db --db-url ...`
+  - live DynamoDB table schema via `--schema-from-dynamodb --dynamodb-table ...`
 - Relationship-aware generation:
   - foreign-key dependency graph
   - parent tables generated before child tables
@@ -42,6 +67,7 @@ Use `loadforge` when you need to:
   - JSON
   - CSV
   - Parquet
+  - DynamoDB typed JSON
 - Validation and reporting:
   - FK integrity checks
   - non-null checks
@@ -53,6 +79,7 @@ Use `loadforge` when you need to:
   - reproducible runs with `--seed`
   - config-file driven runs with JSON, TOML, or YAML
   - per-column and per-table distribution overrides with `--dist`
+  - optional `python` or `polars` engine selection
 
 ---
 
@@ -76,6 +103,12 @@ Optional Polars support:
 pip install "loadforge[polars]"
 ```
 
+DynamoDB schema loading requires `boto3`:
+
+```bash
+pip install boto3
+```
+
 From source:
 
 ```bash
@@ -83,13 +116,13 @@ git clone https://github.com/hyangminj/datagen.git
 cd datagen
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+.venv/bin/python -m pip install -e .
 ```
 
-Optional Polars support from source:
+Contributor setup with test and Polars extras:
 
 ```bash
-pip install -e ".[polars]"
+.venv/bin/python -m pip install -e ".[test,polars]"
 ```
 
 Sanity check:
@@ -155,7 +188,7 @@ datagen --ddl schema.sql --rows 100 --out sqlite
 datagen --ddl schema.sql --rows 100 --out bigquery
 ```
 
-### Read schema directly from a database
+### Read schema directly from a relational database
 
 ```bash
 datagen \
@@ -165,7 +198,7 @@ datagen \
   --out postgres
 ```
 
-Limit DB introspection to selected tables:
+Limit introspection to selected tables:
 
 ```bash
 datagen \
@@ -176,7 +209,7 @@ datagen \
   --out json
 ```
 
-### Insert generated rows directly into a database
+### Insert generated rows directly into a relational database
 
 ```bash
 datagen \
@@ -185,6 +218,26 @@ datagen \
   --insert \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb
 ```
+
+### Generate DynamoDB typed JSON from a live table schema
+
+```bash
+datagen \
+  --schema-from-dynamodb \
+  --dynamodb-table users \
+  --dynamodb-region us-east-1 \
+  --dynamodb-extra-attr email:string \
+  --dynamodb-extra-attr score:int \
+  --rows 100 \
+  --out dynamodb-json \
+  --output-path users.jsonl
+```
+
+Notes:
+
+- key attributes and GSI or LSI key attributes are inferred from the live table
+- use `--dynamodb-extra-attr name:type` to add non-key fields to generated output
+- supported extra attribute aliases include `string`, `uuid`, `date`, `datetime`, `numeric`, `float`, `int`, and `boolean`
 
 ### Control row counts per table
 
@@ -365,14 +418,124 @@ datagen --ddl schema.sql --rows 100 --seed 42 --out json
 
 ---
 
+## Development and testing
+
+### Local setup
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+.venv/bin/python -m pip install -e ".[test,polars]"
+```
+
+If you only need the core package:
+
+```bash
+.venv/bin/python -m pip install -e .
+```
+
+If you need DynamoDB schema loading outside the test extra:
+
+```bash
+.venv/bin/python -m pip install boto3
+```
+
+### Useful test commands
+
+Run the full suite:
+
+```bash
+.venv/bin/python -m pytest
+```
+
+Run only non-integration tests:
+
+```bash
+.venv/bin/python -m pytest -m "not integration"
+```
+
+Run one file:
+
+```bash
+.venv/bin/python -m pytest tests/test_parser_graph.py
+```
+
+Run one integration target:
+
+```bash
+.venv/bin/python -m pytest tests/test_integration_postgres.py
+.venv/bin/python -m pytest tests/test_integration_dynamodb.py
+.venv/bin/python -m pytest tests/test_integration_bigquery.py
+```
+
+Available markers:
+
+- `integration`
+- `postgres`
+- `dynamodb`
+- `bigquery`
+
+### Local integration services
+
+The repo includes `docker-compose.yml` for PostgreSQL and LocalStack DynamoDB:
+
+```bash
+docker compose up -d postgres localstack
+docker compose ps
+```
+
+Service summary:
+
+- PostgreSQL: `localhost:5432`
+- LocalStack DynamoDB: `http://localhost:4566`
+
+Suggested `.env.test`:
+
+```dotenv
+TEST_POSTGRES_URL=postgresql+psycopg2://testuser:testpass@localhost:5432/testdb
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+AWS_DEFAULT_REGION=us-east-1
+DYNAMODB_ENDPOINT_URL=http://localhost:4566
+TEST_BQ_PROJECT=your-gcp-project-id
+TEST_BQ_DATASET=datagen_integration_test
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+`.env.test` is already ignored and is the right place for local test-only credentials.
+
+### BigQuery authentication
+
+Two common options work for the integration tests:
+
+Application Default Credentials:
+
+```bash
+gcloud auth application-default login
+```
+
+Service-account key file:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+```
+
+If `TEST_BQ_PROJECT` is missing or credentials are unavailable, the BigQuery integration tests skip automatically.
+
+---
+
 ## CLI reference
 
 ```bash
-datagen [--ddl schema.sql | --schema-from-db --db-url URL [--tables t1,t2]]
+datagen [--ddl schema.sql
+        | --schema-from-db --db-url URL [--tables t1,t2]
+        | --schema-from-dynamodb --dynamodb-table NAME]
+        [--dynamodb-region REGION]
+        [--dynamodb-extra-attr name:type]
         [--config config.toml]
         [--rows 100]
         [--table-rows users=20,orders=500] [--table-rows events=2000]
-        [--out postgres|mysql|sqlite|bigquery|json|csv|parquet]
+        [--out postgres|mysql|sqlite|bigquery|json|csv|parquet|dynamodb-json]
         [--engine python|polars]
         [--bq-insert-all]
         [--output-path PATH]
@@ -388,8 +551,12 @@ Flag summary:
 
 - `--config`: load defaults from JSON, TOML, YAML, or YML
 - `--ddl`: input DDL file
-- `--schema-from-db`: inspect table metadata from a live database
-- `--tables`: optional comma-separated table filter for introspection mode
+- `--schema-from-db`: inspect relational table metadata from a live database
+- `--tables`: optional comma-separated table filter for relational introspection mode
+- `--schema-from-dynamodb`: inspect a live DynamoDB table definition
+- `--dynamodb-table`: DynamoDB table name for `--schema-from-dynamodb`
+- `--dynamodb-region`: AWS region for DynamoDB schema loading
+- `--dynamodb-extra-attr`: add synthetic non-key DynamoDB attributes, repeatable
 - `--rows`: global default rows per table
 - `--table-rows`: per-table row overrides
 - `--out`: output format, default `postgres`
@@ -397,7 +564,7 @@ Flag summary:
 - `--bq-insert-all`: BigQuery `INSERT ALL ... SELECT 1;` mode
 - `--output-path`: output file path or output directory depending on format
 - `--db-url`: SQLAlchemy database URL for introspection or direct insert
-- `--insert`: insert generated rows directly into the target database
+- `--insert`: insert generated rows directly into the target relational database
 - `--dist`: distribution overrides
 - `--seed`: deterministic generation seed
 - `--report-path`: write a JSON report with validation summary
@@ -408,7 +575,8 @@ Flag summary:
 
 ## Limitations
 
-- DDL parsing and DB introspection cover common schemas well, but advanced dialect-specific features are still partial.
+- DDL parsing and relational DB introspection cover common schemas well, but advanced dialect-specific features are still partial.
+- DynamoDB schema loading models key and index attributes plus explicitly declared extra attributes; it does not infer full document structure from item samples.
 - CHECK-aware generation and `--strict-checks` cover a practical subset, not arbitrary SQL expressions.
 - Function-heavy or cross-column CHECK expressions are best-effort rather than fully modeled.
 - `--engine polars` still falls back to Python for tables with CHECK, unique, or primary-key constraints.
@@ -417,13 +585,9 @@ Flag summary:
 
 ## Future work
 
-- **DynamoDB support**: generate test data for NoSQL schemas with partition key and sort key awareness
-- **More distribution types**: power law and additional statistical distributions for more realistic data modeling
-- **Pipeline edge-case generation**:
-  - hot-spot / data skew: concentrate data on specific partition keys to test skew handling
-  - timestamp edge cases: midnight boundaries, timezone transitions, leap seconds
-  - NULL and empty-value patterns that commonly break pipelines
-  - bulk duplicates for deduplication logic testing
+- More distribution types for realistic synthetic workloads
+- Additional pipeline edge-case generation such as skew, timestamp boundaries, and duplicate-heavy batches
+- Broader dialect coverage and richer schema inference for advanced database features
 
 ---
 
