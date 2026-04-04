@@ -133,7 +133,7 @@ def bq_client() -> bigquery.Client:
 
     try:
         client = bigquery.Client(project=project)
-        _ = next(iter(client.list_projects(page_size=1)), None)
+        _ = client.get_project(project)
     except DefaultCredentialsError as e:
         pytest.skip(f"BigQuery 인증 없음 — {e}")
     except Exception as e:
