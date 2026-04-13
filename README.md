@@ -1,12 +1,12 @@
-# loadforge
+# ddl2data
 
-Synthetic relational and DynamoDB-shaped data generation for pipelines, staging, and service testing.
+Turn any SQL schema into realistic test data — instantly.
 
-- PyPI package: `loadforge`
-- CLI command: `datagen`
+- PyPI package: `ddl2data`
+- CLI command: `ddl2data`
 - Python module: `datagen`
 
-`loadforge` turns SQL DDL, a live relational schema, or a live DynamoDB table schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
+`ddl2data` turns SQL DDL, a live relational schema, or a live DynamoDB table schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
 
 For relational schemas it parses tables and foreign keys, generates rows in parent-before-child order, applies type-aware defaults plus optional distributions, validates the generated data, and writes it out as SQL, JSON, CSV, or Parquet. It can also insert generated rows directly into a relational database through SQLAlchemy. For DynamoDB it can load key and index metadata from a real table and emit typed DynamoDB JSON payloads.
 
@@ -14,7 +14,7 @@ For relational schemas it parses tables and foreign keys, generates rows in pare
 
 ## Why use it
 
-Use `loadforge` when you need to:
+Use `ddl2data` when you need to:
 
 - stress a pipeline or service with large synthetic datasets
 - generate relational fixtures from existing DDL
@@ -88,19 +88,19 @@ Core modules:
 Recommended for CLI use:
 
 ```bash
-pipx install loadforge
+pipx install ddl2data
 ```
 
 Or install with `pip`:
 
 ```bash
-pip install loadforge
+pip install ddl2data
 ```
 
 Optional Polars support:
 
 ```bash
-pip install "loadforge[polars]"
+pip install "ddl2data[polars]"
 ```
 
 DynamoDB schema loading requires `boto3`:
@@ -112,8 +112,8 @@ pip install boto3
 From source:
 
 ```bash
-git clone https://github.com/hyangminj/datagen.git
-cd datagen
+git clone https://github.com/hyangminj/ddl2data.git
+cd ddl2data
 python3 -m venv .venv
 . .venv/bin/activate
 .venv/bin/python -m pip install -e .
@@ -128,7 +128,7 @@ Contributor setup with test and Polars extras:
 Sanity check:
 
 ```bash
-datagen --help
+ddl2data --help
 ```
 
 GitHub Releases also include wheel (`.whl`) and source (`.tar.gz`) artifacts.
@@ -158,19 +158,19 @@ CREATE TABLE orders (
 Generate JSON:
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out json --output-path data.json
+ddl2data --ddl schema.sql --rows 100 --out json --output-path data.json
 ```
 
 Generate PostgreSQL inserts:
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out postgres --output-path seed.sql
+ddl2data --ddl schema.sql --rows 100 --out postgres --output-path seed.sql
 ```
 
 Generate CSV files, one per table:
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
+ddl2data --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
 ```
 
 With this schema, `users` is generated first and `orders.user_id` is filled from generated `users.id` values.
@@ -182,16 +182,16 @@ With this schema, `users` is generated first and `orders.user_id` is filled from
 ### Generate SQL for different targets
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out postgres
-datagen --ddl schema.sql --rows 100 --out mysql
-datagen --ddl schema.sql --rows 100 --out sqlite
-datagen --ddl schema.sql --rows 100 --out bigquery
+ddl2data --ddl schema.sql --rows 100 --out postgres
+ddl2data --ddl schema.sql --rows 100 --out mysql
+ddl2data --ddl schema.sql --rows 100 --out sqlite
+ddl2data --ddl schema.sql --rows 100 --out bigquery
 ```
 
 ### Read schema directly from a relational database
 
 ```bash
-datagen \
+ddl2data \
   --schema-from-db \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb \
   --rows 100 \
@@ -201,7 +201,7 @@ datagen \
 Limit introspection to selected tables:
 
 ```bash
-datagen \
+ddl2data \
   --schema-from-db \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb \
   --tables users,orders,events \
@@ -212,7 +212,7 @@ datagen \
 ### Insert generated rows directly into a relational database
 
 ```bash
-datagen \
+ddl2data \
   --ddl schema.sql \
   --rows 1000 \
   --insert \
@@ -222,7 +222,7 @@ datagen \
 ### Generate DynamoDB typed JSON from a live table schema
 
 ```bash
-datagen \
+ddl2data \
   --schema-from-dynamodb \
   --dynamodb-table users \
   --dynamodb-region us-east-1 \
@@ -242,7 +242,7 @@ Notes:
 ### Control row counts per table
 
 ```bash
-datagen \
+ddl2data \
   --ddl schema.sql \
   --rows 100 \
   --table-rows users=20,orders=500 \
@@ -257,7 +257,7 @@ datagen \
 ### Generate a validation report
 
 ```bash
-datagen \
+ddl2data \
   --ddl schema.sql \
   --rows 500 \
   --strict-checks \
@@ -278,7 +278,7 @@ The report includes counts and sample issues for:
 Parquet output:
 
 ```bash
-datagen \
+ddl2data \
   --ddl schema.sql \
   --rows 100 \
   --out parquet \
@@ -289,7 +289,7 @@ datagen \
 Polars generation and write path:
 
 ```bash
-datagen \
+ddl2data \
   --ddl schema.sql \
   --rows 100000 \
   --out csv \
@@ -307,8 +307,8 @@ Engine behavior:
 ### BigQuery-specific output
 
 ```bash
-datagen --ddl schema.sql --rows 100 --out bigquery --output-path out.sql
-datagen --ddl schema.sql --rows 100 --out bigquery --bq-insert-all --output-path out_insert_all.sql
+ddl2data --ddl schema.sql --rows 100 --out bigquery --output-path out.sql
+ddl2data --ddl schema.sql --rows 100 --out bigquery --bq-insert-all --output-path out_insert_all.sql
 ```
 
 BigQuery output supports:
@@ -322,7 +322,7 @@ BigQuery output supports:
 ## Config file example
 
 ```bash
-datagen --config datagen.toml
+ddl2data --config datagen.toml
 ```
 
 Example `datagen.toml`:
@@ -394,7 +394,7 @@ Priority when both exist:
 
 ## CHECK-aware generation
 
-`loadforge` uses practical heuristics for common CHECK constraints during generation and can optionally validate them again with `--strict-checks`.
+`ddl2data` uses practical heuristics for common CHECK constraints during generation and can optionally validate them again with `--strict-checks`.
 
 Supported forms include:
 
@@ -413,7 +413,7 @@ This is intentionally best-effort, not a full SQL expression engine.
 Use `--seed` to stabilize Python random and Faker output:
 
 ```bash
-datagen --ddl schema.sql --rows 100 --seed 42 --out json
+ddl2data --ddl schema.sql --rows 100 --seed 42 --out json
 ```
 
 ---
@@ -527,7 +527,7 @@ If `TEST_BQ_PROJECT` is missing or credentials are unavailable, the BigQuery int
 ## CLI reference
 
 ```bash
-datagen [--ddl schema.sql
+ddl2data [--ddl schema.sql
         | --schema-from-db --db-url URL [--tables t1,t2]
         | --schema-from-dynamodb --dynamodb-table NAME]
         [--dynamodb-region REGION]

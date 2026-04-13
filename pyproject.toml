@@ -3,14 +3,14 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "loadforge"
-version = "0.2.2"
-description = "Generate synthetic data from SQL DDL or live database schemas"
+name = "ddl2data"
+version = "0.3.0"
+description = "Turn any SQL schema into realistic test data — instantly."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-keywords = ["synthetic-data", "sql", "ddl", "cli", "faker"]
+keywords = ["synthetic-data", "sql", "ddl", "cli", "faker", "test-data", "schema", "ddl2data"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -33,10 +33,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hyangminj/datagen"
-Repository = "https://github.com/hyangminj/datagen"
-Issues = "https://github.com/hyangminj/datagen/issues"
-Releases = "https://github.com/hyangminj/datagen/releases"
+Homepage = "https://github.com/hyangminj/ddl2data"
+Repository = "https://github.com/hyangminj/ddl2data"
+Issues = "https://github.com/hyangminj/ddl2data/issues"
+Releases = "https://github.com/hyangminj/ddl2data/releases"
 
 [project.optional-dependencies]
 polars = [
@@ -50,7 +50,7 @@ test = [
 ]
 
 [project.scripts]
-datagen = "datagen.cli:main"
+ddl2data = "datagen.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
