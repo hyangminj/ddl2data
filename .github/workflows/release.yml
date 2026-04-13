@@ -91,7 +91,7 @@ jobs:
       id-token: write
     environment:
       name: pypi
-      url: https://pypi.org/project/loadforge/
+      url: https://pypi.org/project/ddl2data/
 
     steps:
       - name: Download distributions
