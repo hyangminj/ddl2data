@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from datagen.config import ColumnMeta, TableMeta
+from ddl2data.config import ColumnMeta, TableMeta
 
 
 def _infer_attr_type(col: ColumnMeta | None, value: Any) -> str:

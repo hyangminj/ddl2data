@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from datagen.config import CheckConstraintMeta, ColumnMeta, TableMeta
-from datagen.generator.base import _extract_in_values, _normalize_check_expression, _split_compound_check
+from ddl2data.config import CheckConstraintMeta, ColumnMeta, TableMeta
+from ddl2data.generator.base import _extract_in_values, _normalize_check_expression, _split_compound_check
 
 
 def _evaluate_numeric_op(value: float, op: str, limit: float) -> bool:

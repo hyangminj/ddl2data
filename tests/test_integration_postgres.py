@@ -6,9 +6,9 @@ import pytest
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
-from datagen.cli import _insert_via_sqlalchemy
-from datagen.parser.graph import generation_order
-from datagen.parser.introspect import load_schema_from_db
+from ddl2data.cli import _insert_via_sqlalchemy
+from ddl2data.parser.graph import generation_order
+from ddl2data.parser.introspect import load_schema_from_db
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.postgres]

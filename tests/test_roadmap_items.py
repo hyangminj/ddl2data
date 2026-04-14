@@ -1,7 +1,7 @@
-from datagen.generator.base import generate_all
-from datagen.parser.ddl import parse_ddl_text
-from datagen.parser.graph import generation_order
-from datagen.writer.postgres import render_insert_sql
+from ddl2data.generator.base import generate_all
+from ddl2data.parser.ddl import parse_ddl_text
+from ddl2data.parser.graph import generation_order
+from ddl2data.writer.postgres import render_insert_sql
 
 
 def test_check_constraint_generation_between_in_and_positive():

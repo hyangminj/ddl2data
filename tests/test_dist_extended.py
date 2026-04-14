@@ -1,7 +1,7 @@
 import pytest
 
-from datagen.config import DistSpec
-from datagen.generator.dist import parse_dist_arg, sample_with_dist
+from ddl2data.config import DistSpec
+from ddl2data.generator.dist import parse_dist_arg, sample_with_dist
 
 
 def test_parse_and_sample_exponential():

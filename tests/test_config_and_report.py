@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from datagen.cli import _merge_config, _parse_table_rows_map, build_parser, main
-from datagen.config_loader import load_config
-from datagen.report import build_report
+from ddl2data.cli import _merge_config, _parse_table_rows_map, build_parser, main
+from ddl2data.config_loader import load_config
+from ddl2data.report import build_report
 
 
 def test_load_toml_config(tmp_path: Path):
-    cfg = tmp_path / "datagen.toml"
+    cfg = tmp_path / "ddl2data.toml"
     cfg.write_text(
         '\n'.join([
             'ddl = "schema.sql"',
@@ -45,7 +45,7 @@ def test_build_report_shape():
 
 
 def test_load_json_config(tmp_path: Path):
-    cfg = tmp_path / "datagen.json"
+    cfg = tmp_path / "ddl2data.json"
     cfg.write_text(json.dumps({"rows": 10, "out": "json"}), encoding="utf-8")
     data = load_config(str(cfg))
     assert data["rows"] == 10
@@ -71,7 +71,7 @@ def test_merge_config_rejects_negative_rows():
 def test_main_rejects_invalid_dist_token(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         "sys.argv",
-        ["datagen", "--ddl", "schema.sql", "--rows", "1", "--dist", "broken", "--out", "json"],
+        ["ddl2data", "--ddl", "schema.sql", "--rows", "1", "--dist", "broken", "--out", "json"],
     )
     with pytest.raises(SystemExit, match="Invalid --dist token 'broken'"):
         main()

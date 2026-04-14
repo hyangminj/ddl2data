@@ -6,8 +6,8 @@ from typing import Any
 
 from faker import Faker
 
-from datagen.config import CheckConstraintMeta, ColumnMeta, DistSpec, TableMeta
-from datagen.generator.dist import sample_with_dist
+from ddl2data.config import CheckConstraintMeta, ColumnMeta, DistSpec, TableMeta
+from ddl2data.generator.dist import sample_with_dist
 
 fake = Faker()
 

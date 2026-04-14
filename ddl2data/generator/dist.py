@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from datagen.config import DistSpec
+from ddl2data.config import DistSpec
 
 SUPPORTED_DISTRIBUTIONS = {
     "normal",

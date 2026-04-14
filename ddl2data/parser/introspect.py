@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from datagen.config import CheckConstraintMeta, ColumnMeta, ForeignKey, TableMeta, UniqueConstraintMeta
+from ddl2data.config import CheckConstraintMeta, ColumnMeta, ForeignKey, TableMeta, UniqueConstraintMeta
 
 
 def _safe_len(col_type: object) -> int | None:

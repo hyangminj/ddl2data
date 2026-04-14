@@ -7,7 +7,7 @@ import re
 import sqlglot
 from sqlglot import exp
 
-from datagen.config import (
+from ddl2data.config import (
     CheckConstraintMeta,
     ColumnMeta,
     ForeignKey,

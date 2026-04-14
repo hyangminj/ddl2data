@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from datagen.cli import main
-from datagen.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
-from datagen.writer.dynamodb_json_writer import write_dynamodb_json
+from ddl2data.cli import main
+from ddl2data.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
+from ddl2data.writer.dynamodb_json_writer import write_dynamodb_json
 
 
 class FakeDynamoDBClient:
@@ -81,12 +81,12 @@ def test_main_supports_dynamodb_schema_and_json_output(tmp_path, monkeypatch: py
         assert extra_attrs is not None and len(extra_attrs) == 2
         return load_schema_from_dynamodb("users", client=FakeDynamoDBClient(), extra_attrs=extra_attrs)
 
-    monkeypatch.setattr("datagen.cli.load_schema_from_dynamodb", fake_load_schema_from_dynamodb)
+    monkeypatch.setattr("ddl2data.cli.load_schema_from_dynamodb", fake_load_schema_from_dynamodb)
     output_path = tmp_path / "users.ddb.json"
     monkeypatch.setattr(
         "sys.argv",
         [
-            "datagen",
+            "ddl2data",
             "--schema-from-dynamodb",
             "--dynamodb-table",
             "users",
@@ -141,8 +141,8 @@ def test_main_supports_dynamodb_config_input(tmp_path, monkeypatch: pytest.Monke
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr("datagen.cli.load_schema_from_dynamodb", fake_load_schema_from_dynamodb)
-    monkeypatch.setattr("sys.argv", ["datagen", "--config", str(config_path)])
+    monkeypatch.setattr("ddl2data.cli.load_schema_from_dynamodb", fake_load_schema_from_dynamodb)
+    monkeypatch.setattr("sys.argv", ["ddl2data", "--config", str(config_path)])
 
     main()
     lines = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]

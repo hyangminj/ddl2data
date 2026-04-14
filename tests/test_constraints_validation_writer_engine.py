@@ -5,16 +5,16 @@ import re
 import pytest
 from sqlalchemy import create_engine, text
 
-import datagen.generator.base as generator_base
-from datagen.generator.base import generate_all
-from datagen.parser.ddl import parse_ddl_text
-from datagen.parser.graph import generation_order
-from datagen.parser.introspect import load_schema_from_db
-from datagen.validation import validate_generated_data
-from datagen.writer.csv_writer import write_csv
-from datagen.writer.json_writer import write_json
-from datagen.writer.postgres import render_insert_sql
-from datagen.writer.parquet_writer import write_parquet
+import ddl2data.generator.base as generator_base
+from ddl2data.generator.base import generate_all
+from ddl2data.parser.ddl import parse_ddl_text
+from ddl2data.parser.graph import generation_order
+from ddl2data.parser.introspect import load_schema_from_db
+from ddl2data.validation import validate_generated_data
+from ddl2data.writer.csv_writer import write_csv
+from ddl2data.writer.json_writer import write_json
+from ddl2data.writer.postgres import render_insert_sql
+from ddl2data.writer.parquet_writer import write_parquet
 
 
 def test_parse_ddl_captures_unique_and_check_constraints():

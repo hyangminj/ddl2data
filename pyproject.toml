@@ -50,7 +50,7 @@ test = [
 ]
 
 [project.scripts]
-ddl2data = "datagen.cli:main"
+ddl2data = "ddl2data.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

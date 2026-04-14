@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 
-from datagen.parser.graph import generation_order
-from datagen.parser.introspect import load_schema_from_db
+from ddl2data.parser.graph import generation_order
+from ddl2data.parser.introspect import load_schema_from_db
 
 
 def test_load_schema_from_db_sqlite_fk_order():

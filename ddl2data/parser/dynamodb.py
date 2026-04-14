@@ -5,7 +5,7 @@ import importlib
 import os
 from typing import Any, Protocol
 
-from datagen.config import ColumnMeta, TableMeta
+from ddl2data.config import ColumnMeta, TableMeta
 
 DYNAMODB_ATTR_TYPE_ALIASES = {
     "s": ("S", "text"),

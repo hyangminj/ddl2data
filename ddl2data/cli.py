@@ -8,21 +8,21 @@ from typing import Any
 from faker import Faker
 from sqlalchemy import MetaData, Table, create_engine
 
-from datagen.config import DistSpec
-from datagen.config_loader import load_config
-from datagen.generator.base import generate_all
-from datagen.generator.dist import parse_dist_arg
-from datagen.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
-from datagen.parser.ddl import parse_ddl_file
-from datagen.parser.graph import generation_order
-from datagen.parser.introspect import load_schema_from_db
-from datagen.report import build_report
-from datagen.validation import validate_check_constraints, validate_generated_data
-from datagen.writer.csv_writer import write_csv
-from datagen.writer.dynamodb_json_writer import write_dynamodb_json
-from datagen.writer.json_writer import write_json
-from datagen.writer.postgres import render_insert_sql
-from datagen.writer.parquet_writer import write_parquet
+from ddl2data.config import DistSpec
+from ddl2data.config_loader import load_config
+from ddl2data.generator.base import generate_all
+from ddl2data.generator.dist import parse_dist_arg
+from ddl2data.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
+from ddl2data.parser.ddl import parse_ddl_file
+from ddl2data.parser.graph import generation_order
+from ddl2data.parser.introspect import load_schema_from_db
+from ddl2data.report import build_report
+from ddl2data.validation import validate_check_constraints, validate_generated_data
+from ddl2data.writer.csv_writer import write_csv
+from ddl2data.writer.dynamodb_json_writer import write_dynamodb_json
+from ddl2data.writer.json_writer import write_json
+from ddl2data.writer.postgres import render_insert_sql
+from ddl2data.writer.parquet_writer import write_parquet
 
 
 def _insert_via_sqlalchemy(db_url: str, data: dict[str, list[dict[str, Any]]]) -> None:

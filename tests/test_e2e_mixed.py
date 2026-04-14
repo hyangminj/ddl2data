@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from datagen.generator.base import generate_all
-from datagen.parser.ddl import parse_ddl_text
-from datagen.parser.graph import generation_order
-from datagen.report import build_report
-from datagen.validation import validate_check_constraints, validate_generated_data
-from datagen.writer.csv_writer import write_csv
-from datagen.writer.json_writer import write_json
-from datagen.writer.postgres import render_insert_sql
+from ddl2data.generator.base import generate_all
+from ddl2data.parser.ddl import parse_ddl_text
+from ddl2data.parser.graph import generation_order
+from ddl2data.report import build_report
+from ddl2data.validation import validate_check_constraints, validate_generated_data
+from ddl2data.writer.csv_writer import write_csv
+from ddl2data.writer.json_writer import write_json
+from ddl2data.writer.postgres import render_insert_sql
 
 
 MIXED_DDL = """
@@ -116,7 +116,7 @@ def test_e2e_bigquery_typed_literals():
 def test_e2e_parquet_compression(tmp_path: Path):
     """Parquet output with compression creates files."""
     pytest.importorskip("polars")
-    from datagen.writer.parquet_writer import write_parquet
+    from ddl2data.writer.parquet_writer import write_parquet
 
     data = {"users": [{"id": i, "name": f"user_{i}"} for i in range(10)]}
 

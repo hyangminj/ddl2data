@@ -7,9 +7,9 @@ from typing import Protocol
 
 import pytest
 
-from datagen.generator.base import generate_all
-from datagen.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
-from datagen.writer.dynamodb_json_writer import write_dynamodb_json
+from ddl2data.generator.base import generate_all
+from ddl2data.parser.dynamodb import load_schema_from_dynamodb, parse_dynamodb_extra_attrs
+from ddl2data.writer.dynamodb_json_writer import write_dynamodb_json
 
 
 class DynamoDBTestClient(Protocol):

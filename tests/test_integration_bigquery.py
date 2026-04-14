@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from datagen.writer.postgres import render_insert_sql
+from ddl2data.writer.postgres import render_insert_sql
 
 if TYPE_CHECKING:
     from google.cloud import bigquery
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 pytestmark = [pytest.mark.integration, pytest.mark.bigquery]
 
 
-def _make_table_id(project: str, dataset: str, prefix: str = "datagen_it") -> str:
+def _make_table_id(project: str, dataset: str, prefix: str = "ddl2data_it") -> str:
     return f"{project}.{dataset}.{prefix}_{uuid.uuid4().hex[:8]}"
 
 

@@ -1,5 +1,5 @@
-from datagen.parser.ddl import parse_ddl_text
-from datagen.parser.graph import generation_order
+from ddl2data.parser.ddl import parse_ddl_text
+from ddl2data.parser.graph import generation_order
 
 
 DDL = """

@@ -4,7 +4,7 @@ Turn any SQL schema into realistic test data — instantly.
 
 - PyPI package: `ddl2data`
 - CLI command: `ddl2data`
-- Python module: `datagen`
+- Python module: `ddl2data`
 
 `ddl2data` turns SQL DDL, a live relational schema, or a live DynamoDB table schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
 
@@ -39,13 +39,13 @@ Schema input
 
 Core modules:
 
-- `datagen/parser/ddl.py`: SQL DDL parsing via `sqlglot`
-- `datagen/parser/introspect.py`: relational schema introspection via SQLAlchemy
-- `datagen/parser/dynamodb.py`: DynamoDB schema loading via `boto3`
-- `datagen/generator/base.py`: main row generation engine
-- `datagen/generator/dist.py`: distribution parsing and sampling
-- `datagen/writer/`: SQL, JSON, CSV, Parquet, and DynamoDB JSON writers
-- `datagen/validation.py` and `datagen/report.py`: validation and reporting
+- `ddl2data/parser/ddl.py`: SQL DDL parsing via `sqlglot`
+- `ddl2data/parser/introspect.py`: relational schema introspection via SQLAlchemy
+- `ddl2data/parser/dynamodb.py`: DynamoDB schema loading via `boto3`
+- `ddl2data/generator/base.py`: main row generation engine
+- `ddl2data/generator/dist.py`: distribution parsing and sampling
+- `ddl2data/writer/`: SQL, JSON, CSV, Parquet, and DynamoDB JSON writers
+- `ddl2data/validation.py` and `ddl2data/report.py`: validation and reporting
 
 ---
 
@@ -322,10 +322,10 @@ BigQuery output supports:
 ## Config file example
 
 ```bash
-ddl2data --config datagen.toml
+ddl2data --config ddl2data.toml
 ```
 
-Example `datagen.toml`:
+Example `ddl2data.toml`:
 
 ```toml
 ddl = "schema.sql"
@@ -498,7 +498,7 @@ AWS_SECRET_ACCESS_KEY=test
 AWS_DEFAULT_REGION=us-east-1
 DYNAMODB_ENDPOINT_URL=http://localhost:4566
 TEST_BQ_PROJECT=your-gcp-project-id
-TEST_BQ_DATASET=datagen_integration_test
+TEST_BQ_DATASET=ddl2data_integration_test
 # GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 ```
 

@@ -90,8 +90,8 @@ jobs:
       - run: python -m pytest tests/test_integration_bigquery.py -v --tb=short
         env:
           TEST_BQ_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-          TEST_BQ_DATASET: datagen_ci_test
+          TEST_BQ_DATASET: ddl2data_ci_test
 
       - name: BigQuery cleanup
         if: always()
-        run: bq rm -r -f ${{ secrets.GCP_PROJECT_ID }}:datagen_ci_test || true
+        run: bq rm -r -f ${{ secrets.GCP_PROJECT_ID }}:ddl2data_ci_test || true

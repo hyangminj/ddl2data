@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datagen.writer.postgres import render_insert_sql
+from ddl2data.writer.postgres import render_insert_sql
 
 
 def test_mysql_render_insert_sql_uses_backticks() -> None:

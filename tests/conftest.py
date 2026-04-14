@@ -146,7 +146,7 @@ def bq_client() -> bigquery.Client:
 def bq_dataset(bq_client: bigquery.Client) -> Generator[str, None, None]:
     from google.cloud import bigquery
 
-    dataset_id = os.environ.get("TEST_BQ_DATASET", f"datagen_it_{uuid.uuid4().hex[:8]}")
+    dataset_id = os.environ.get("TEST_BQ_DATASET", f"ddl2data_it_{uuid.uuid4().hex[:8]}")
     dataset_ref = bigquery.Dataset(f"{bq_client.project}.{dataset_id}")
     _ = bq_client.create_dataset(dataset_ref, exists_ok=True)
     yield dataset_id

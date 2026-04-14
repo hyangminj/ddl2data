@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
-from datagen.config import TableMeta
+from ddl2data.config import TableMeta
 
 
 def build_fk_graph(tables: list[TableMeta]) -> dict[str, set[str]]:
