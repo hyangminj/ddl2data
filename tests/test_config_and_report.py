@@ -3,9 +3,15 @@ from pathlib import Path
 
 import pytest
 
+from ddl2data import __version__
 from ddl2data.cli import _merge_config, _parse_table_rows_map, build_parser, main
 from ddl2data.config_loader import load_config
 from ddl2data.report import build_report
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python <3.11
+    import tomli as tomllib
 
 
 def test_load_toml_config(tmp_path: Path):
@@ -23,6 +29,12 @@ def test_load_toml_config(tmp_path: Path):
     assert data["ddl"] == "schema.sql"
     assert data["rows"] == 100
     assert data["out"] == "postgres"
+
+
+def test_package_version_matches_pyproject():
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+    assert __version__ == project["version"]
 
 
 def test_build_report_shape():
