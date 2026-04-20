@@ -1,225 +1,120 @@
 # ddl2data
 
-Turn any SQL schema into realistic test data — instantly.
+> Turn any SQL schema into realistic test data — instantly.
 
-- PyPI package: `ddl2data`
-- CLI command: `ddl2data`
-- Python module: `ddl2data`
-
-`ddl2data` turns SQL DDL, a live relational schema, or a live DynamoDB table schema into fake but structured data that is useful for load tests, end-to-end pipeline checks, local development, and staging environment seeding.
-
-For relational schemas it parses tables and foreign keys, generates rows in parent-before-child order, applies type-aware defaults plus optional distributions, validates the generated data, and writes it out as SQL, JSON, CSV, or Parquet. It can also insert generated rows directly into a relational database through SQLAlchemy. For DynamoDB it can load key and index metadata from a real table and emit typed DynamoDB JSON payloads.
-
----
-
-## Why use it
-
-Use `ddl2data` when you need to:
-
-- stress a pipeline or service with large synthetic datasets
-- generate relational fixtures from existing DDL
-- seed staging or local environments while preserving foreign-key order
-- inspect a live schema and generate data without hand-writing metadata
-- generate DynamoDB-shaped typed JSON from a real table definition
-- export the same dataset shape in SQL, JSON, CSV, Parquet, or DynamoDB JSON
-- produce validation reports before loading data elsewhere
-
----
-
-## How it works
-
-```text
-Schema input
-  -> parse DDL, inspect a live relational DB, or inspect a DynamoDB table
-  -> build metadata and dependency order
-  -> generate rows with Faker and optional distributions
-  -> validate FK, null, unique, and optional CHECK constraints
-  -> write SQL/JSON/CSV/Parquet/DynamoDB JSON or insert into a DB
+```bash
+pipx install ddl2data
+ddl2data --ddl schema.sql --rows 100000 --out postgres
 ```
 
-Core modules:
+---
 
-- `ddl2data/parser/ddl.py`: SQL DDL parsing via `sqlglot`
-- `ddl2data/parser/introspect.py`: relational schema introspection via SQLAlchemy
-- `ddl2data/parser/dynamodb.py`: DynamoDB schema loading via `boto3`
-- `ddl2data/generator/base.py`: main row generation engine
-- `ddl2data/generator/dist.py`: distribution parsing and sampling
-- `ddl2data/writer/`: SQL, JSON, CSV, Parquet, and DynamoDB JSON writers
-- `ddl2data/validation.py` and `ddl2data/report.py`: validation and reporting
+## The problem
+
+You're about to run a migration on a 10-billion-row production table.
+Your staging environment has 500 rows.
+
+You need realistic data — with the right foreign key relationships, the right
+skew in the `amount` column, and enough volume to actually stress the pipeline.
+But you can't copy production. So you write another hand-crafted seed script.
+
+**ddl2data exists so you never write that script again.**
+
+Point it at your DDL (or a live database), tell it how many rows you want, and
+get back SQL inserts, JSON, CSV, Parquet, or DynamoDB JSON — with FK ordering,
+type-aware values, and optional statistical distributions baked in.
 
 ---
 
-## Core capabilities
+## Who it's for
 
-- Input sources:
-  - SQL DDL via `--ddl`
-  - live relational schema introspection via `--schema-from-db --db-url ...`
-  - live DynamoDB table schema via `--schema-from-dynamodb --dynamodb-table ...`
-- Relationship-aware generation:
-  - foreign-key dependency graph
-  - parent tables generated before child tables
-  - FK-only tables can use the Polars generation path
-- Output formats:
-  - PostgreSQL `INSERT`
-  - MySQL `INSERT`
-  - SQLite `INSERT`
-  - BigQuery `INSERT` and `INSERT ALL`
-  - JSON
-  - CSV
-  - Parquet
-  - DynamoDB typed JSON
-- Validation and reporting:
-  - FK integrity checks
-  - non-null checks
-  - unique collision checks
-  - optional CHECK validation with `--strict-checks`
-  - JSON report output via `--report-path`
-- Generation controls:
-  - per-table row overrides with `--table-rows`
-  - reproducible runs with `--seed`
-  - config-file driven runs with JSON, TOML, or YAML
-  - per-column and per-table distribution overrides with `--dist`
-  - optional `python` or `polars` engine selection
+**Data engineers** running pipeline migrations, load tests, or query benchmarks
+who need large, realistic relational fixtures without touching production data.
+
+**Backend developers** who want a seeded local or staging database that reflects
+real usage patterns — not just `user_1`, `user_2`, `user_3`.
+
+---
+
+## Quick look
+
+```sql
+-- schema.sql
+CREATE TABLE users (
+  id    INT PRIMARY KEY,
+  email VARCHAR(100) UNIQUE NOT NULL,
+  age   INT,
+  tier  VARCHAR(10)
+);
+
+CREATE TABLE orders (
+  id      INT PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id),
+  amount  NUMERIC
+);
+```
+
+```bash
+# 100k orders, FK order preserved, amount follows a power-law distribution
+ddl2data \
+  --ddl schema.sql \
+  --rows 100000 \
+  --table-rows users=5000 \
+  --dist amount:pareto,alpha=1.5,xm=1 \
+  --out postgres \
+  --output-path seed.sql
+```
+
+`users` is generated first. Every `orders.user_id` is a valid `users.id`.
+No FK violations. No hand-wiring.
+
+---
+
+## Why not just use Faker directly?
+
+You could. But you'd spend an afternoon on:
+
+- topological sort so parent rows exist before child rows
+- unique constraint retries
+- type mapping for every column dialect
+- wiring distributions per column
+- writing a CSV/Parquet/SQL serializer
+
+ddl2data does all of that. Your schema is already the spec.
 
 ---
 
 ## Install
 
-Recommended for CLI use:
-
 ```bash
-pipx install ddl2data
+pipx install ddl2data        # recommended for CLI use
+pip install ddl2data         # or plain pip
+pip install "ddl2data[polars]"  # + Polars engine for large volumes
+pip install boto3            # + DynamoDB schema loading
 ```
-
-Or install with `pip`:
-
-```bash
-pip install ddl2data
-```
-
-Optional Polars support:
-
-```bash
-pip install "ddl2data[polars]"
-```
-
-DynamoDB schema loading requires `boto3`:
-
-```bash
-pip install boto3
-```
-
-From source:
-
-```bash
-git clone https://github.com/hyangminj/ddl2data.git
-cd ddl2data
-python3 -m venv .venv
-. .venv/bin/activate
-.venv/bin/python -m pip install -e .
-```
-
-Contributor setup with test and Polars extras:
-
-```bash
-.venv/bin/python -m pip install -e ".[test,polars]"
-```
-
-Sanity check:
-
-```bash
-ddl2data --help
-```
-
-GitHub Releases also include wheel (`.whl`) and source (`.tar.gz`) artifacts.
 
 ---
 
-## Quick start
+## Input sources
 
-Minimal schema:
-
-```sql
-CREATE TABLE users (
-  id INT PRIMARY KEY,
-  email VARCHAR(100) UNIQUE NOT NULL,
-  age INT,
-  tier VARCHAR(10)
-);
-
-CREATE TABLE orders (
-  id INT PRIMARY KEY,
-  user_id INT NOT NULL,
-  amount NUMERIC,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-);
-```
-
-Generate JSON:
+### SQL DDL file
 
 ```bash
-ddl2data --ddl schema.sql --rows 100 --out json --output-path data.json
+ddl2data --ddl schema.sql --rows 1000 --out json
 ```
 
-Generate PostgreSQL inserts:
-
-```bash
-ddl2data --ddl schema.sql --rows 100 --out postgres --output-path seed.sql
-```
-
-Generate CSV files, one per table:
-
-```bash
-ddl2data --ddl schema.sql --rows 100 --out csv --output-path ./csv_out
-```
-
-With this schema, `users` is generated first and `orders.user_id` is filled from generated `users.id` values.
-
----
-
-## Common workflows
-
-### Generate SQL for different targets
-
-```bash
-ddl2data --ddl schema.sql --rows 100 --out postgres
-ddl2data --ddl schema.sql --rows 100 --out mysql
-ddl2data --ddl schema.sql --rows 100 --out sqlite
-ddl2data --ddl schema.sql --rows 100 --out bigquery
-```
-
-### Read schema directly from a relational database
-
-```bash
-ddl2data \
-  --schema-from-db \
-  --db-url postgresql+psycopg://user:pass@localhost:5432/mydb \
-  --rows 100 \
-  --out postgres
-```
-
-Limit introspection to selected tables:
+### Live relational database (introspect schema directly)
 
 ```bash
 ddl2data \
   --schema-from-db \
   --db-url postgresql+psycopg://user:pass@localhost:5432/mydb \
   --tables users,orders,events \
-  --rows 100 \
-  --out json
-```
-
-### Insert generated rows directly into a relational database
-
-```bash
-ddl2data \
-  --ddl schema.sql \
   --rows 1000 \
-  --insert \
-  --db-url postgresql+psycopg://user:pass@localhost:5432/mydb
+  --out postgres
 ```
 
-### Generate DynamoDB typed JSON from a live table schema
+### Live DynamoDB table
 
 ```bash
 ddl2data \
@@ -228,369 +123,248 @@ ddl2data \
   --dynamodb-region us-east-1 \
   --dynamodb-extra-attr email:string \
   --dynamodb-extra-attr score:int \
-  --rows 100 \
+  --rows 500 \
   --out dynamodb-json \
   --output-path users.jsonl
 ```
 
-Notes:
+---
 
-- key attributes and GSI or LSI key attributes are inferred from the live table
-- use `--dynamodb-extra-attr name:type` to add non-key fields to generated output
-- supported extra attribute aliases include `string`, `uuid`, `date`, `datetime`, `numeric`, `float`, `int`, and `boolean`
+## Output formats
 
-### Control row counts per table
+| Flag | Output |
+|---|---|
+| `--out postgres` | PostgreSQL `INSERT` statements |
+| `--out mysql` | MySQL `INSERT` statements |
+| `--out sqlite` | SQLite `INSERT` statements |
+| `--out bigquery` | BigQuery `INSERT` (or `INSERT ALL` with `--bq-insert-all`) |
+| `--out json` | JSON array |
+| `--out csv` | CSV files, one per table |
+| `--out parquet` | Parquet files, one per table |
+| `--out dynamodb-json` | DynamoDB typed JSON (`.jsonl`) |
+
+Or insert directly into a running database:
+
+```bash
+ddl2data \
+  --ddl schema.sql \
+  --rows 10000 \
+  --insert \
+  --db-url postgresql+psycopg://user:pass@localhost:5432/mydb
+```
+
+---
+
+## Realistic distributions
+
+Real production data is never uniform. ddl2data lets you model that.
+
+```bash
+# Age clusters around 33
+--dist users.age:normal,mean=33,std=7
+
+# Order amounts follow a power law (a few large, many small)
+--dist orders.amount:pareto,alpha=1.5,xm=1
+
+# Tier is heavily skewed toward free users
+--dist users.tier:weighted,free=70%,pro=25%,enterprise=5%
+
+# Timestamps spike at peak hours
+--dist events.created_at:peak,hours=9-11,18-20
+
+# Category ranks follow Zipf (rank 1 dominates)
+--dist products.category_rank:zipf,skew=1.8,n=200
+
+# Event counts follow Poisson
+--dist daily_logins:poisson,lambda=3
+```
+
+Distribution priority: `table.column` overrides a bare `column` rule.
+
+---
+
+## Per-table row counts
 
 ```bash
 ddl2data \
   --ddl schema.sql \
   --rows 100 \
-  --table-rows users=20,orders=500 \
-  --table-rows events=2000 \
-  --out json
+  --table-rows users=5000 \
+  --table-rows orders=200000 \
+  --table-rows events=1000000 \
+  --out parquet \
+  --output-path ./out
 ```
 
-- `--rows` stays the global default
-- `--table-rows table=count` overrides individual tables
-- config files can use a `table_rows` map
+---
 
-### Generate a validation report
+## Validation and reporting
 
 ```bash
 ddl2data \
   --ddl schema.sql \
-  --rows 500 \
+  --rows 50000 \
   --strict-checks \
   --report-path report.json \
   --out json \
   --output-path data.json
 ```
 
-The report includes counts and sample issues for:
+The JSON report includes counts and sample issues for:
 
 - FK violations
 - non-null violations
 - unique collisions
-- supported CHECK violations when `--strict-checks` is enabled
-
-### Use Parquet or the Polars engine
-
-Parquet output:
-
-```bash
-ddl2data \
-  --ddl schema.sql \
-  --rows 100 \
-  --out parquet \
-  --parquet-compression zstd \
-  --output-path ./parquet_out
-```
-
-Polars generation and write path:
-
-```bash
-ddl2data \
-  --ddl schema.sql \
-  --rows 100000 \
-  --out csv \
-  --engine polars \
-  --output-path ./csv_out
-```
-
-Engine behavior:
-
-- tables with CHECK constraints fall back to the Python row-wise generator
-- tables with unique or primary-key constraints fall back to the Python row-wise generator
-- FK-only tables can remain on the Polars path
-- `--out parquet` requires the optional `polars` dependency regardless of `--engine`
-
-### BigQuery-specific output
-
-```bash
-ddl2data --ddl schema.sql --rows 100 --out bigquery --output-path out.sql
-ddl2data --ddl schema.sql --rows 100 --out bigquery --bq-insert-all --output-path out_insert_all.sql
-```
-
-BigQuery output supports:
-
-- dataset-qualified table names like `dataset.table`
-- `INSERT ALL` rendering via `--bq-insert-all`
-- typed `DATE` and `TIMESTAMP` literals
+- CHECK constraint violations (when `--strict-checks` is set)
 
 ---
 
-## Config file example
+## Reproducible runs
 
 ```bash
-ddl2data --config ddl2data.toml
+ddl2data --ddl schema.sql --rows 1000 --seed 42 --out json
 ```
 
-Example `ddl2data.toml`:
+Same seed → same output. Useful for deterministic CI fixtures.
+
+---
+
+## Config file
+
+For complex setups, drive everything from a config file:
 
 ```toml
-ddl = "schema.sql"
-rows = 500
-out = "postgres"
-seed = 42
-strict_checks = true
-table_rows = { users = 100, orders = 500, events = 2000 }
+# ddl2data.toml
+ddl            = "schema.sql"
+rows           = 500
+out            = "postgres"
+seed           = 42
+strict_checks  = true
+
+[table_rows]
+users  = 100
+orders = 500
+events = 2000
+
 dist = [
   "users.age:normal,mean=33,std=7",
   "orders.amount:pareto,alpha=1.7,xm=1",
 ]
 ```
 
-CLI arguments override config file values.
+```bash
+ddl2data --config ddl2data.toml
+```
+
+CLI arguments override config values.
 
 ---
 
-## Distribution overrides
+## Large-volume generation
 
-Syntax:
-
-```text
---dist <column_or_table.column>:<kind>,k=v,k=v
-```
-
-Supported distribution kinds:
-
-- `normal`
-- `poisson`
-- `weighted`
-- `exponential`
-- `pareto`
-- `zipf`
-- `peak`
-
-Examples:
+For tables without CHECK, UNIQUE, or PRIMARY KEY constraints, the Polars engine
+skips row-by-row Python and generates data in bulk:
 
 ```bash
-# global column rule
---dist age:normal,mean=35,std=7
-
-# table-qualified rule (higher priority than global)
---dist users.age:normal,mean=30,std=6
-
-# poisson counts
---dist daily_orders:poisson,lambda=3
-
-# weighted categorical values
---dist tier:weighted,A=60%,B=30%,C=10%
-
-# heavy-tail behavior
---dist amount:pareto,alpha=1.5,xm=1
---dist category_rank:zipf,skew=1.8,n=200
-
-# peak-hour timestamps
---dist created_at:peak,hours=9-11,18-20
+ddl2data \
+  --ddl schema.sql \
+  --rows 5000000 \
+  --out parquet \
+  --engine polars \
+  --parquet-compression zstd \
+  --output-path ./out
 ```
 
-Priority when both exist:
-
-1. `table.column`
-2. `column`
+Tables with constraints fall back to the Python engine automatically.
 
 ---
 
-## CHECK-aware generation
+## How it works
 
-`ddl2data` uses practical heuristics for common CHECK constraints during generation and can optionally validate them again with `--strict-checks`.
-
-Supported forms include:
-
-- numeric comparison: `age >= 18`, `qty > 0`, `score <= 100`, `x != 0`
-- ranges: `price BETWEEN 10 AND 20`
-- enum lists: `status IN ('A', 'B', 'C')`
-- regex-like checks: `code ~ '^[A-Z]{2}$'`, `REGEXP_LIKE(code, '^[0-9]+$')`
-- nested compound forms built from supported expressions with `AND` and `OR`
-
-This is intentionally best-effort, not a full SQL expression engine.
-
----
-
-## Reproducible runs
-
-Use `--seed` to stabilize Python random and Faker output:
-
-```bash
-ddl2data --ddl schema.sql --rows 100 --seed 42 --out json
+```
+Schema input
+  → parse DDL / introspect live DB / load DynamoDB metadata
+  → build table dependency graph (topological sort)
+  → generate rows with Faker + optional distributions
+  → validate FK, null, unique, CHECK constraints
+  → write SQL / JSON / CSV / Parquet / DynamoDB JSON
+    or INSERT directly into a running database
 ```
 
----
+Core modules:
 
-## Development and testing
-
-### Local setup
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-.venv/bin/python -m pip install -e ".[test,polars]"
-```
-
-If you only need the core package:
-
-```bash
-.venv/bin/python -m pip install -e .
-```
-
-If you need DynamoDB schema loading outside the test extra:
-
-```bash
-.venv/bin/python -m pip install boto3
-```
-
-### Useful test commands
-
-Run the full suite:
-
-```bash
-.venv/bin/python -m pytest
-```
-
-Run only non-integration tests:
-
-```bash
-.venv/bin/python -m pytest -m "not integration"
-```
-
-Run one file:
-
-```bash
-.venv/bin/python -m pytest tests/test_parser_graph.py
-```
-
-Run one integration target:
-
-```bash
-.venv/bin/python -m pytest tests/test_integration_postgres.py
-.venv/bin/python -m pytest tests/test_integration_dynamodb.py
-.venv/bin/python -m pytest tests/test_integration_bigquery.py
-```
-
-Available markers:
-
-- `integration`
-- `postgres`
-- `dynamodb`
-- `bigquery`
-
-### Local integration services
-
-The repo includes `docker-compose.yml` for PostgreSQL and LocalStack DynamoDB:
-
-```bash
-docker compose up -d postgres localstack
-docker compose ps
-```
-
-Service summary:
-
-- PostgreSQL: `localhost:5432`
-- LocalStack DynamoDB: `http://localhost:4566`
-
-Suggested `.env.test`:
-
-```dotenv
-TEST_POSTGRES_URL=postgresql+psycopg2://testuser:testpass@localhost:5432/testdb
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
-AWS_DEFAULT_REGION=us-east-1
-DYNAMODB_ENDPOINT_URL=http://localhost:4566
-TEST_BQ_PROJECT=your-gcp-project-id
-TEST_BQ_DATASET=ddl2data_integration_test
-# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-```
-
-`.env.test` is already ignored and is the right place for local test-only credentials.
-
-### BigQuery authentication
-
-Two common options work for the integration tests:
-
-Application Default Credentials:
-
-```bash
-gcloud auth application-default login
-```
-
-Service-account key file:
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-```
-
-If `TEST_BQ_PROJECT` is missing or credentials are unavailable, the BigQuery integration tests skip automatically.
+| Module | Role |
+|---|---|
+| `ddl2data/parser/ddl.py` | SQL DDL parsing via `sqlglot` |
+| `ddl2data/parser/introspect.py` | Live schema introspection via SQLAlchemy |
+| `ddl2data/parser/dynamodb.py` | DynamoDB schema loading via `boto3` |
+| `ddl2data/generator/base.py` | Row generation engine |
+| `ddl2data/generator/dist.py` | Distribution parsing and sampling |
+| `ddl2data/writer/` | SQL, JSON, CSV, Parquet, DynamoDB JSON writers |
+| `ddl2data/validation.py` | FK, null, unique, CHECK validation |
+| `ddl2data/report.py` | JSON validation report |
 
 ---
 
 ## CLI reference
 
-```bash
-ddl2data [--ddl schema.sql
-        | --schema-from-db --db-url URL [--tables t1,t2]
-        | --schema-from-dynamodb --dynamodb-table NAME]
-        [--dynamodb-region REGION]
-        [--dynamodb-extra-attr name:type]
-        [--config config.toml]
-        [--rows 100]
-        [--table-rows users=20,orders=500] [--table-rows events=2000]
-        [--out postgres|mysql|sqlite|bigquery|json|csv|parquet|dynamodb-json]
-        [--engine python|polars]
-        [--bq-insert-all]
-        [--output-path PATH]
-        [--insert --db-url URL]
-        [--dist ...] [--dist ...]
-        [--seed INT]
-        [--report-path report.json]
-        [--strict-checks]
-        [--parquet-compression snappy|zstd|lz4|gzip|none]
+```
+ddl2data [--ddl FILE | --schema-from-db | --schema-from-dynamodb --dynamodb-table NAME]
+         [--db-url URL] [--tables t1,t2]
+         [--dynamodb-region REGION] [--dynamodb-extra-attr name:type]
+         [--config FILE]
+         [--rows N] [--table-rows table=N] ...
+         [--out FORMAT] [--engine python|polars]
+         [--bq-insert-all]
+         [--output-path PATH]
+         [--insert]
+         [--dist SPEC] ...
+         [--seed INT]
+         [--report-path FILE]
+         [--strict-checks]
+         [--parquet-compression snappy|zstd|lz4|gzip|none]
 ```
 
-Flag summary:
+---
 
-- `--config`: load defaults from JSON, TOML, YAML, or YML
-- `--ddl`: input DDL file
-- `--schema-from-db`: inspect relational table metadata from a live database
-- `--tables`: optional comma-separated table filter for relational introspection mode
-- `--schema-from-dynamodb`: inspect a live DynamoDB table definition
-- `--dynamodb-table`: DynamoDB table name for `--schema-from-dynamodb`
-- `--dynamodb-region`: AWS region for DynamoDB schema loading
-- `--dynamodb-extra-attr`: add synthetic non-key DynamoDB attributes, repeatable
-- `--rows`: global default rows per table
-- `--table-rows`: per-table row overrides
-- `--out`: output format, default `postgres`
-- `--engine`: `python` or `polars`
-- `--bq-insert-all`: BigQuery `INSERT ALL ... SELECT 1;` mode
-- `--output-path`: output file path or output directory depending on format
-- `--db-url`: SQLAlchemy database URL for introspection or direct insert
-- `--insert`: insert generated rows directly into the target relational database
-- `--dist`: distribution overrides
-- `--seed`: deterministic generation seed
-- `--report-path`: write a JSON report with validation summary
-- `--strict-checks`: validate supported CHECK constraints after generation
-- `--parquet-compression`: Parquet compression codec
+## Development
+
+```bash
+git clone https://github.com/hyangminj/ddl2data.git
+cd ddl2data
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e ".[test,polars]"
+```
+
+Run tests:
+
+```bash
+pytest                                          # full suite
+pytest -m "not integration"                     # unit tests only
+pytest tests/test_integration_postgres.py       # PostgreSQL integration
+pytest tests/test_integration_dynamodb.py       # DynamoDB integration
+pytest tests/test_integration_bigquery.py       # BigQuery integration
+```
+
+Local services (PostgreSQL + LocalStack DynamoDB):
+
+```bash
+docker compose up -d postgres localstack
+```
+
+Copy `.env.test.example` to `.env.test` and fill in your credentials.
 
 ---
 
 ## Limitations
 
-- DDL parsing and relational DB introspection cover common schemas well, but advanced dialect-specific features are still partial.
-- DynamoDB schema loading models key and index attributes plus explicitly declared extra attributes; it does not infer full document structure from item samples.
-- CHECK-aware generation and `--strict-checks` cover a practical subset, not arbitrary SQL expressions.
-- Function-heavy or cross-column CHECK expressions are best-effort rather than fully modeled.
-- `--engine polars` still falls back to Python for tables with CHECK, unique, or primary-key constraints.
-
----
-
-## Future work
-
-- More distribution types for realistic synthetic workloads
-- Additional pipeline edge-case generation such as skew, timestamp boundaries, and duplicate-heavy batches
-- Broader dialect coverage and richer schema inference for advanced database features
+- DDL parsing covers common SQL well; advanced dialect-specific features are partial.
+- DynamoDB schema loading models key and index attributes plus explicitly declared extra attributes; it does not infer document structure from item samples.
+- CHECK-aware generation covers a practical subset — not arbitrary SQL expressions.
+- `--engine polars` falls back to Python for tables with CHECK, UNIQUE, or PRIMARY KEY constraints.
 
 ---
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+[Apache 2.0](LICENSE)
